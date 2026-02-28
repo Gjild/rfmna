@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "families": [
+    {
+      "family": "E_ASSEMBLER_*",
+      "mapping_mode": "typed_error_only",
+      "source_paths": [
+        "src/rfmna/assembler/fill.py",
+        "src/rfmna/assembler/pattern.py"
+      ],
+      "mapped_runtime_diagnostic_codes": []
+    },
+    {
+      "family": "E_INDEX_*",
+      "mapping_mode": "typed_error_only",
+      "source_paths": [
+        "src/rfmna/assembler/indexing.py"
+      ],
+      "mapped_runtime_diagnostic_codes": []
+    },
+    {
+      "family": "E_IR_*",
+      "mapping_mode": "diagnostic_equivalent_required",
+      "source_paths": [
+        "src/rfmna/elements/factory.py",
+        "src/rfmna/elements/factory_models.py"
+      ],
+      "mapped_runtime_diagnostic_codes": [
+        "E_IR_KIND_UNKNOWN"
+      ]
+    },
+    {
+      "family": "E_MANIFEST_*",
+      "mapping_mode": "typed_error_only",
+      "source_paths": [
+        "src/rfmna/viz_io/manifest.py"
+      ],
+      "mapped_runtime_diagnostic_codes": []
+    },
+    {
+      "family": "E_MODEL_FREQ_GRID_*",
+      "mapping_mode": "typed_error_only",
+      "source_paths": [
+        "src/rfmna/parser/errors.py"
+      ],
+      "mapped_runtime_diagnostic_codes": []
+    },
+    {
+      "family": "E_MODEL_PARAM_*",
+      "mapping_mode": "typed_error_only",
+      "source_paths": [
+        "src/rfmna/parser/errors.py"
+      ],
+      "mapped_runtime_diagnostic_codes": []
+    },
+    {
+      "family": "E_MODEL_STAMP_*",
+      "mapping_mode": "typed_error_only",
+      "source_paths": [
+        "src/rfmna/elements/base.py",
+        "src/rfmna/elements/controlled.py",
+        "src/rfmna/elements/inductor.py",
+        "src/rfmna/elements/passive.py",
+        "src/rfmna/elements/sources.py"
+      ],
+      "mapped_runtime_diagnostic_codes": []
+    },
+    {
+      "family": "E_MODEL_VALIDATION_ISSUE_*",
+      "mapping_mode": "typed_error_only",
+      "source_paths": [
+        "src/rfmna/elements/base.py"
+      ],
+      "mapped_runtime_diagnostic_codes": []
+    },
+    {
+      "family": "E_PARSE_*",
+      "mapping_mode": "typed_error_only",
+      "source_paths": [
+        "src/rfmna/parser/errors.py"
+      ],
+      "mapped_runtime_diagnostic_codes": []
+    },
+    {
+      "family": "E_SOLVER_CONFIG_*",
+      "mapping_mode": "typed_error_only",
+      "source_paths": [
+        "src/rfmna/solver/fallback.py"
+      ],
+      "mapped_runtime_diagnostic_codes": []
+    },
+    {
+      "family": "FACTORY_*",
+      "mapping_mode": "typed_error_only",
+      "source_paths": [
+        "src/rfmna/elements/factory.py"
+      ],
+      "mapped_runtime_diagnostic_codes": []
+    }
+  ]
+}

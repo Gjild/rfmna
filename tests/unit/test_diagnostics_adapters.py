@@ -129,7 +129,7 @@ def test_catalog_codes_are_unique_and_schema_complete() -> None:
     assert len(CANONICAL_DIAGNOSTIC_CATALOG) == len(set(CANONICAL_DIAGNOSTIC_CATALOG))
     for code, metadata in CANONICAL_DIAGNOSTIC_CATALOG.items():
         assert code == metadata.code
-        assert code.startswith("E_")
+        assert code.startswith(("E_", "W_"))
         assert (
             tuple(field.name for field in metadata.__dataclass_fields__.values())
             == REQUIRED_CATALOG_FIELDS

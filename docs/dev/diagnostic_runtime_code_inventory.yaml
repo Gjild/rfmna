@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "runtime_emission_paths": [
+    "docs/spec/thresholds_v4_0_0.yaml",
+    "src/rfmna/cli/main.py",
+    "src/rfmna/parser/preflight.py",
+    "src/rfmna/rf_metrics/boundary.py",
+    "src/rfmna/rf_metrics/impedance.py",
+    "src/rfmna/rf_metrics/s_params.py",
+    "src/rfmna/rf_metrics/y_params.py",
+    "src/rfmna/rf_metrics/z_params.py",
+    "src/rfmna/solver/backend.py",
+    "src/rfmna/solver/fallback.py",
+    "src/rfmna/sweep_engine/run.py"
+  ],
+  "non_diagnostic_scoped_paths": [
+    "src/rfmna/assembler/fill.py",
+    "src/rfmna/assembler/indexing.py",
+    "src/rfmna/assembler/pattern.py",
+    "src/rfmna/parser/errors.py",
+    "src/rfmna/viz_io/manifest.py"
+  ],
+  "runtime_codes": [
+    "E_CLI_RF_METRIC_INVALID",
+    "E_CLI_RF_OPTIONS_INVALID",
+    "E_MODEL_PORT_Z0_COMPLEX",
+    "E_MODEL_PORT_Z0_NONPOSITIVE",
+    "E_NUM_IMPEDANCE_UNDEFINED",
+    "E_NUM_RF_BOUNDARY_SINGULAR",
+    "E_NUM_SINGULAR_MATRIX",
+    "E_NUM_SOLVE_FAILED",
+    "E_NUM_S_CONVERSION_SINGULAR",
+    "E_NUM_ZBLOCK_ILL_CONDITIONED",
+    "E_NUM_ZBLOCK_SINGULAR",
+    "E_TOPO_FLOATING_NODE",
+    "E_TOPO_HARD_CONSTRAINT_CONFLICT",
+    "E_TOPO_PORT_INVALID",
+    "E_TOPO_REFERENCE_INVALID",
+    "E_TOPO_RF_BOUNDARY_INCONSISTENT",
+    "E_TOPO_VSRC_LOOP_INCONSISTENT",
+    "W_NUM_COND_UNAVAILABLE",
+    "W_NUM_ILL_CONDITIONED"
+  ]
+}

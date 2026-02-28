@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "code": "E_ASSEMBLER_FILL_COORD_NOT_COMPILED",
+      "family": "E_ASSEMBLER_*",
+      "source_paths": [
+        "src/rfmna/assembler/fill.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_ASSEMBLER_FILL_RHS_NOT_COMPILED",
+      "family": "E_ASSEMBLER_*",
+      "source_paths": [
+        "src/rfmna/assembler/fill.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_ASSEMBLER_INDEX_OUT_OF_RANGE",
+      "family": "E_ASSEMBLER_*",
+      "source_paths": [
+        "src/rfmna/assembler/pattern.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_ASSEMBLER_PATTERN_INVALID",
+      "family": "E_ASSEMBLER_*",
+      "source_paths": [
+        "src/rfmna/assembler/pattern.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_INDEX_AUX_UNKNOWN",
+      "family": "E_INDEX_*",
+      "source_paths": [
+        "src/rfmna/assembler/indexing.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_IR_KIND_UNKNOWN",
+      "family": "E_IR_*",
+      "source_paths": [
+        "src/rfmna/elements/factory.py",
+        "src/rfmna/elements/factory_models.py"
+      ],
+      "diagnostic_equivalent_codes": [
+        "E_IR_KIND_UNKNOWN"
+      ]
+    },
+    {
+      "code": "E_MANIFEST_PAYLOAD_INVALID",
+      "family": "E_MANIFEST_*",
+      "source_paths": [
+        "src/rfmna/viz_io/manifest.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_MANIFEST_SERIALIZE_FAILED",
+      "family": "E_MANIFEST_*",
+      "source_paths": [
+        "src/rfmna/viz_io/manifest.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_MODEL_FREQ_GRID_INVALID",
+      "family": "E_MODEL_FREQ_GRID_*",
+      "source_paths": [
+        "src/rfmna/parser/errors.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_MODEL_FREQ_GRID_INVALID_LOG_DOMAIN",
+      "family": "E_MODEL_FREQ_GRID_*",
+      "source_paths": [
+        "src/rfmna/parser/errors.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_MODEL_PARAM_CYCLE",
+      "family": "E_MODEL_PARAM_*",
+      "source_paths": [
+        "src/rfmna/parser/errors.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_MODEL_STAMP_CONTEXT_INVALID",
+      "family": "E_MODEL_STAMP_*",
+      "source_paths": [
+        "src/rfmna/elements/base.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_MODEL_STAMP_ELEMENT_INVALID",
+      "family": "E_MODEL_STAMP_*",
+      "source_paths": [
+        "src/rfmna/elements/controlled.py",
+        "src/rfmna/elements/inductor.py",
+        "src/rfmna/elements/passive.py",
+        "src/rfmna/elements/sources.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_MODEL_STAMP_INDEX_INVALID",
+      "family": "E_MODEL_STAMP_*",
+      "source_paths": [
+        "src/rfmna/elements/base.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_MODEL_STAMP_VALUE_INVALID",
+      "family": "E_MODEL_STAMP_*",
+      "source_paths": [
+        "src/rfmna/elements/base.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_MODEL_VALIDATION_ISSUE_INVALID",
+      "family": "E_MODEL_VALIDATION_ISSUE_*",
+      "source_paths": [
+        "src/rfmna/elements/base.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_PARSE_EXPR_INVALID",
+      "family": "E_PARSE_*",
+      "source_paths": [
+        "src/rfmna/parser/errors.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_PARSE_NUMBER_INVALID",
+      "family": "E_PARSE_*",
+      "source_paths": [
+        "src/rfmna/parser/errors.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_PARSE_NUMBER_NONFINITE",
+      "family": "E_PARSE_*",
+      "source_paths": [
+        "src/rfmna/parser/errors.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_PARSE_PARAM_NONFINITE",
+      "family": "E_PARSE_*",
+      "source_paths": [
+        "src/rfmna/parser/errors.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_PARSE_PARAM_UNDEFINED",
+      "family": "E_PARSE_*",
+      "source_paths": [
+        "src/rfmna/parser/errors.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_PARSE_PARAM_VALUE_INVALID",
+      "family": "E_PARSE_*",
+      "source_paths": [
+        "src/rfmna/parser/errors.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_PARSE_UNIT_INVALID",
+      "family": "E_PARSE_*",
+      "source_paths": [
+        "src/rfmna/parser/errors.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_SOLVER_CONFIG_INVALID",
+      "family": "E_SOLVER_CONFIG_*",
+      "source_paths": [
+        "src/rfmna/solver/fallback.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_SOLVER_CONFIG_PARSE_FAILED",
+      "family": "E_SOLVER_CONFIG_*",
+      "source_paths": [
+        "src/rfmna/solver/fallback.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "E_SOLVER_CONFIG_READ_FAILED",
+      "family": "E_SOLVER_CONFIG_*",
+      "source_paths": [
+        "src/rfmna/solver/fallback.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    },
+    {
+      "code": "FACTORY_CONSTRUCTOR_FAILED",
+      "family": "FACTORY_*",
+      "source_paths": [
+        "src/rfmna/elements/factory.py"
+      ],
+      "diagnostic_equivalent_codes": []
+    }
+  ]
+}
