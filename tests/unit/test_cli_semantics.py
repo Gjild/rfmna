@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
 import pytest
+import typer
 from numpy.typing import NDArray
 from typer.testing import CliRunner
 
@@ -195,7 +197,78 @@ def test_check_unexpected_exception_exits_2(monkeypatch: pytest.MonkeyPatch) -> 
     )
     result = runner.invoke(cli_main.app, ["check", "design.net"])
     assert result.exit_code == EXIT_WARN_OR_FAIL
-    assert "internal error: boom" in result.stdout
+    assert "code=E_CLI_CHECK_INTERNAL" in result.stdout
+    assert "message=check internal failure: boom" in result.stdout
+
+
+def test_check_loader_boundary_failure_emits_typed_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_loader_error(_: str) -> cli_main.CliDesignBundle:
+        raise typer.BadParameter("loader missing")
+
+    monkeypatch.setattr(cli_main, "_load_design_bundle", _raise_loader_error)
+
+    result = runner.invoke(cli_main.app, ["check", "design.net"])
+
+    assert result.exit_code == EXIT_WARN_OR_FAIL
+    assert "code=E_CLI_CHECK_LOADER_FAILED" in result.stdout
+    assert "message=check loader boundary failed: loader missing" in result.stdout
+
+
+def test_check_json_output_is_machine_parseable_and_permutation_stable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bundle = _build_bundle((1.0,))
+    monkeypatch.setattr(cli_main, "_load_design_bundle", lambda design: bundle)
+
+    warning = DiagnosticEvent(
+        code="W_NUM_ILL_CONDITIONED",
+        severity=Severity.WARNING,
+        message="warn",
+        suggested_action="act",
+        solver_stage=SolverStage.SOLVE,
+        element_id="E2",
+        witness={"b": 2, "a": 1},
+    )
+    error = DiagnosticEvent(
+        code="E_TOPO_FLOATING_NODE",
+        severity=Severity.ERROR,
+        message="err",
+        suggested_action="act",
+        solver_stage=SolverStage.PREFLIGHT,
+        element_id="E1",
+        witness={"z": {"k2": 2, "k1": 1}},
+    )
+    permutations = ((warning, error), (error, warning))
+    call_index = {"value": 0}
+
+    def _preflight(_: PreflightInput) -> tuple[DiagnosticEvent, ...]:
+        index = call_index["value"]
+        call_index["value"] += 1
+        return permutations[index]
+
+    monkeypatch.setattr(cli_main, "_execute_preflight", _preflight)
+
+    first = runner.invoke(cli_main.app, ["check", "design.net", "--format", "json"])
+    second = runner.invoke(cli_main.app, ["check", "design.net", "--format", "json"])
+
+    assert first.exit_code == EXIT_WARN_OR_FAIL
+    assert second.exit_code == EXIT_WARN_OR_FAIL
+    assert first.stdout == second.stdout
+
+    payload = json.loads(first.stdout)
+    assert payload["schema"] == "docs/spec/schemas/check_output_v1.json"
+    assert payload["schema_version"] == 1
+    assert payload["design"] == "design.net"
+    assert payload["status"] == "fail"
+    assert payload["exit_code"] == EXIT_WARN_OR_FAIL
+    assert [diag["code"] for diag in payload["diagnostics"]] == [
+        "E_TOPO_FLOATING_NODE",
+        "W_NUM_ILL_CONDITIONED",
+    ]
+    assert payload["diagnostics"][0]["witness"] == {"z": {"k1": 1, "k2": 2}}
+    assert payload["diagnostics"][1]["witness"] == {"a": 1, "b": 2}
 
 
 def test_run_unexpected_exception_exits_2(monkeypatch: pytest.MonkeyPatch) -> None:

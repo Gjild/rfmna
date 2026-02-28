@@ -21,6 +21,8 @@
     "src/rfmna/viz_io/manifest.py"
   ],
   "runtime_codes": [
+    "E_CLI_CHECK_INTERNAL",
+    "E_CLI_CHECK_LOADER_FAILED",
     "E_CLI_RF_METRIC_INVALID",
     "E_CLI_RF_OPTIONS_INVALID",
     "E_MODEL_PORT_Z0_COMPLEX",

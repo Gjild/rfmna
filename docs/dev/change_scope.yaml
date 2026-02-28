@@ -8,5 +8,5 @@
     "migration_notes": [],
     "reproducibility_impact_statement_path": null
   },
-  "notes": "P2-04 normalizes runtime diagnostic emission through canonical catalog-backed builders/adapters across parser/preflight/sweep/rf_metrics/CLI without changing frozen artifact surfaces or warning-propagation targets from P2-02."
+  "notes": "P2-05 hardens `rfmna check` with additive deterministic JSON output (`--format json`), canonical schema `docs/spec/schemas/check_output_v1.json`, and typed loader/internal diagnostics. Default text grammar and run/check exit mapping remain contract-equivalent (`check`: 0 for no-error/warnings-only, 2 for any error path); no frozen artifact #9 semantic change is introduced."
 }

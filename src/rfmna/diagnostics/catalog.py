@@ -229,6 +229,18 @@ _CATALOG_ENTRIES: tuple[DiagnosticCatalogEntry, ...] = (
         SolverStage.PARSE,
         "provide compatible --rf options and deterministic RF port mapping",
     ),
+    _entry(
+        "E_CLI_CHECK_LOADER_FAILED",
+        Severity.ERROR,
+        SolverStage.PARSE,
+        "integrate a deterministic design loader and retry check",
+    ),
+    _entry(
+        "E_CLI_CHECK_INTERNAL",
+        Severity.ERROR,
+        SolverStage.PARSE,
+        "inspect check-command integration and retry",
+    ),
 )
 
 

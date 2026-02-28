@@ -17,7 +17,8 @@ uv run pytest tests/unit/test_cli_rf_options.py -q
 Notes:
 
 - `rfmna run ...` and `rfmna check ...` require a project-specific design-loader integration.
-- Without design-loader wiring, CLI returns a typed parameter error from `src/rfmna/cli/main.py`.
+- Without design-loader wiring, CLI returns a typed parameter error for `rfmna run ...` from `src/rfmna/cli/main.py`.
+- Additionally, `rfmna check ...` returns a typed `DIAG` error (`E_CLI_CHECK_LOADER_FAILED`).
 
 ## 2) Executable API Example (RF Sweep Payloads)
 

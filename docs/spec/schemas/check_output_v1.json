@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "docs/spec/schemas/check_output_v1.json",
+  "title": "rfmna check output v1",
+  "description": "Deterministic machine-readable output contract for `rfmna check --format json`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "design",
+    "status",
+    "exit_code",
+    "diagnostics"
+  ],
+  "properties": {
+    "schema": {
+      "const": "docs/spec/schemas/check_output_v1.json"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "design": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "exit_code": {
+      "type": "integer",
+      "enum": [
+        0,
+        2
+      ]
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/diagnostic_event"
+      }
+    }
+  },
+  "$defs": {
+    "json_value": {
+      "type": [
+        "null",
+        "boolean",
+        "number",
+        "string",
+        "array",
+        "object"
+      ],
+      "items": {
+        "$ref": "#/$defs/json_value"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/json_value"
+      }
+    },
+    "node_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_id"
+      ],
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "port_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "port_id"
+      ],
+      "properties": {
+        "port_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "diagnostic_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "suggested_action",
+        "solver_stage"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "suggested_action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "solver_stage": {
+          "type": "string",
+          "enum": [
+            "parse",
+            "preflight",
+            "assemble",
+            "solve",
+            "postprocess"
+          ]
+        },
+        "element_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "node_context": {
+          "$ref": "#/$defs/node_context"
+        },
+        "port_context": {
+          "$ref": "#/$defs/port_context"
+        },
+        "frequency_hz": {
+          "type": "number"
+        },
+        "frequency_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sweep_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "witness": {
+          "$ref": "#/$defs/json_value"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "element_id"
+          ]
+        },
+        {
+          "required": [
+            "node_context"
+          ]
+        },
+        {
+          "required": [
+            "port_context"
+          ]
+        }
+      ]
+    }
+  },
+  "x-compatibility-policy": {
+    "major_version_surface": "file path/version and required field semantics are frozen per schema version",
+    "additive_changes": "optional fields may be added in future schema versions only",
+    "breaking_changes": "changing required keys, key meanings, ordering semantics, or exit mapping requires new schema version and governance review"
+  }
+}

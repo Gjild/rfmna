@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 
 import numpy as np
 import pytest
+import typer
 from scipy.sparse import csc_matrix  # type: ignore[import-untyped]
 from typer.testing import CliRunner
 
@@ -120,6 +122,40 @@ def test_check_exit_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
     assert err.exit_code == EXIT_FAIL
 
 
+def test_check_exit_mapping_covers_warning_json_and_loader_boundary_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bundle = _bundle()
+    monkeypatch.setattr(cli_main, "_load_design_bundle", lambda design: bundle)
+    warning = DiagnosticEvent(
+        code="W_NUM_ILL_CONDITIONED",
+        severity=Severity.WARNING,
+        message="warn",
+        suggested_action="fix",
+        solver_stage=SolverStage.SOLVE,
+        element_id="REF",
+    )
+    monkeypatch.setattr(cli_main, "_execute_preflight", lambda _: (warning,))
+
+    warning_result = runner.invoke(cli_main.app, ["check", "d.net", "--format", "json"])
+    assert warning_result.exit_code == 0
+    warning_payload = json.loads(warning_result.stdout)
+    assert warning_payload["status"] == "pass"
+    assert warning_payload["exit_code"] == 0
+
+    def _loader_fail(design: str) -> cli_main.CliDesignBundle:
+        del design
+        raise typer.BadParameter("loader missing")
+
+    monkeypatch.setattr(cli_main, "_load_design_bundle", _loader_fail)
+    loader_result = runner.invoke(cli_main.app, ["check", "d.net", "--format", "json"])
+    assert loader_result.exit_code == EXIT_FAIL
+    loader_payload = json.loads(loader_result.stdout)
+    assert loader_payload["status"] == "fail"
+    assert loader_payload["exit_code"] == EXIT_FAIL
+    assert loader_payload["diagnostics"][0]["code"] == "E_CLI_CHECK_LOADER_FAILED"
+
+
 def test_unexpected_exceptions_map_to_contract_exit_code(monkeypatch: pytest.MonkeyPatch) -> None:
     def _boom(design: str) -> cli_main.CliDesignBundle:
         del design
@@ -131,6 +167,7 @@ def test_unexpected_exceptions_map_to_contract_exit_code(monkeypatch: pytest.Mon
     run_result = runner.invoke(cli_main.app, ["run", "d.net", "--analysis", "ac"])
 
     assert check_result.exit_code == EXIT_FAIL
+    assert "code=E_CLI_CHECK_INTERNAL" in check_result.stdout
     assert run_result.exit_code == EXIT_FAIL
 
 

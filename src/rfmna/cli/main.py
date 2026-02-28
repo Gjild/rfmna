@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol, cast, runtime_checkable
+from typing import Final, Literal, Protocol, cast, runtime_checkable
 
 import numpy as np
 import typer
@@ -49,6 +50,10 @@ _RF_METRIC_ORDER: dict[RFMetricName, int] = {
 _RF_METRIC_CHOICES: tuple[str, ...] = tuple(_RF_METRIC_ORDER)
 _CLI_RF_METRIC_INVALID = "E_CLI_RF_METRIC_INVALID"
 _CLI_RF_OPTIONS_INVALID = "E_CLI_RF_OPTIONS_INVALID"
+_CLI_CHECK_LOADER_FAILED = "E_CLI_CHECK_LOADER_FAILED"
+_CLI_CHECK_INTERNAL = "E_CLI_CHECK_INTERNAL"
+_CHECK_OUTPUT_SCHEMA_ID: Final[str] = "docs/spec/schemas/check_output_v1.json"
+_CHECK_OUTPUT_SCHEMA_VERSION: Final[int] = 1
 _RF_OPTION = typer.Option(
     None,
     "--rf",
@@ -159,21 +164,31 @@ def _execute_sweep_with_repro_capture(
 
 
 @app.command()
-def check(design: str) -> None:
+def check(
+    design: str,
+    format: Literal["text", "json"] = typer.Option(
+        "text",
+        "--format",
+        help="Check output format: text|json",
+        show_default=True,
+    ),
+) -> None:
     """Preflight checks for a design file."""
+    diagnostics: tuple[DiagnosticEvent, ...]
     try:
         bundle = _load_design_bundle(design)
-        diagnostics = tuple(sort_diagnostics(_execute_preflight(bundle.preflight_input)))
-    except typer.BadParameter:
-        raise
+    except typer.BadParameter as exc:
+        diagnostics = (_check_loader_failure_diagnostic(design=design, exc=exc),)
     except Exception as exc:  # pragma: no cover - defensive boundary path
-        typer.echo(f"internal error: {exc}")
-        raise typer.Exit(code=2) from exc
+        diagnostics = (_check_internal_failure_diagnostic(design=design, exc=exc),)
+    else:
+        try:
+            diagnostics = tuple(sort_diagnostics(_execute_preflight(bundle.preflight_input)))
+        except Exception as exc:  # pragma: no cover - defensive boundary path
+            diagnostics = (_check_internal_failure_diagnostic(design=design, exc=exc),)
 
-    _print_preflight_diagnostics(diagnostics)
-    if _has_error_diagnostics(diagnostics):
-        raise typer.Exit(code=2)
-    raise typer.Exit(code=0)
+    _emit_check_output(design=design, diagnostics=diagnostics, output_format=format)
+    raise typer.Exit(code=_derive_check_exit_code(diagnostics))
 
 
 @app.command()
@@ -373,6 +388,69 @@ def _derive_run_exit_code(statuses: NDArray[np.str_]) -> int:
     if any(value == "degraded" for value in normalized):
         return 1
     return 0
+
+
+def _derive_check_exit_code(diagnostics: Sequence[DiagnosticEvent]) -> int:
+    if _has_error_diagnostics(diagnostics):
+        return 2
+    return 0
+
+
+def _emit_check_output(
+    *,
+    design: str,
+    diagnostics: Sequence[DiagnosticEvent],
+    output_format: Literal["text", "json"],
+) -> None:
+    if output_format == "json":
+        typer.echo(_build_check_json_output(design=design, diagnostics=diagnostics))
+        return
+    _print_preflight_diagnostics(diagnostics)
+
+
+def _build_check_json_output(*, design: str, diagnostics: Sequence[DiagnosticEvent]) -> str:
+    payload: dict[str, object] = {
+        "schema": _CHECK_OUTPUT_SCHEMA_ID,
+        "schema_version": _CHECK_OUTPUT_SCHEMA_VERSION,
+        "design": design,
+        "status": "fail" if _has_error_diagnostics(diagnostics) else "pass",
+        "exit_code": _derive_check_exit_code(diagnostics),
+        "diagnostics": [event.model_dump(mode="json", exclude_none=True) for event in diagnostics],
+    }
+    return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+
+
+def _check_loader_failure_diagnostic(*, design: str, exc: Exception) -> DiagnosticEvent:
+    return build_diagnostic_event(
+        code=_CLI_CHECK_LOADER_FAILED,
+        message=f"check loader boundary failed: {_exception_message(exc)}",
+        element_id="cli.check",
+        witness={
+            "design": design,
+            "error_type": type(exc).__name__,
+            "source": "design_loader",
+        },
+    )
+
+
+def _check_internal_failure_diagnostic(*, design: str, exc: Exception) -> DiagnosticEvent:
+    return build_diagnostic_event(
+        code=_CLI_CHECK_INTERNAL,
+        message=f"check internal failure: {_exception_message(exc)}",
+        element_id="cli.check",
+        witness={
+            "design": design,
+            "error_type": type(exc).__name__,
+            "source": "check_command",
+        },
+    )
+
+
+def _exception_message(exc: Exception) -> str:
+    message = str(exc).strip()
+    if message:
+        return message
+    return type(exc).__name__
 
 
 def _print_preflight_diagnostics(diagnostics: Sequence[DiagnosticEvent]) -> None:
