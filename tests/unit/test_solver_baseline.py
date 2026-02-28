@@ -123,9 +123,12 @@ def test_backend_metadata_schema_presence_and_types() -> None:
     assert isinstance(metadata.backend_name, str)
     assert isinstance(metadata.notes.n_unknowns, int)
     assert isinstance(metadata.notes.nnz, int)
-    assert metadata.permutation_row is None
-    assert metadata.permutation_col is None
-    assert metadata.pivot_order is None
+    assert metadata.permutation_row == (0,)
+    assert metadata.permutation_col == (0,)
+    assert metadata.pivot_order == (0,)
+    assert metadata.notes.effective_pivot_profile == "default"
+    assert metadata.notes.effective_scaling_enabled is False
+    assert metadata.notes.scaling_mode == "none"
 
 
 def test_backend_failure_policy_a_returns_fail_with_placeholders() -> None:
@@ -156,16 +159,27 @@ def test_sparse_inputs_and_sparse_only_backend_call(
 ) -> None:
     called = {"value": False}
 
-    def fake_spsolve(
+    class _FakeLu:
+        def __init__(self, size: int) -> None:
+            self.perm_r = np.arange(size, dtype=np.int64)
+            self.perm_c = np.arange(size, dtype=np.int64)
+
+        def solve(self, vector: NDArray[np.complex128]) -> NDArray[np.complex128]:
+            return np.asarray(vector / 2.0, dtype=np.complex128)
+
+    def fake_splu(
         matrix: csr_matrix | csc_matrix | coo_matrix,
-        vector: NDArray[np.complex128],
-    ) -> NDArray[np.complex128]:
+        *,
+        permc_spec: str,
+        diag_pivot_thresh: float,
+    ) -> _FakeLu:
         called["value"] = True
         assert issparse(matrix)
-        assert vector.dtype == np.complex128
-        return np.asarray([2.0 + 0.0j], dtype=np.complex128)
+        assert permc_spec == "COLAMD"
+        assert diag_pivot_thresh == pytest.approx(1.0)
+        return _FakeLu(size=matrix.shape[0])
 
-    monkeypatch.setattr(backend_module, "_scipy_spsolve", fake_spsolve)
+    monkeypatch.setattr(backend_module, "_scipy_splu", fake_splu)
 
     A = matrix_builder(np.asarray([[2.0 + 0.0j]], dtype=np.complex128))
     b = _as_complex([4.0 + 0.0j])
