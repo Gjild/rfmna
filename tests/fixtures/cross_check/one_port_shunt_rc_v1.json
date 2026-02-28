@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "fixture_id": "one_port_shunt_rc_v1",
+  "scenario": "one_port_shunt_rc",
+  "reference": {
+    "source": "docs/dev/cross_check_reference_tolerance_policy.md",
+    "equations": "eq-1"
+  },
+  "tolerance_source": "docs/dev/tolerances/regression_baseline_v1.yaml",
+  "tolerance_profiles": {
+    "y": "rf_matrix_tight",
+    "z": "rf_matrix_tight",
+    "s": "rf_matrix_loose"
+  },
+  "frequencies_hz": [
+    1000.0,
+    1000000.0,
+    1000000000.0
+  ],
+  "z0_ohm": 50.0,
+  "ports": [
+    "P1"
+  ],
+  "parameters": {
+    "g_s": 0.02,
+    "c_f": 2e-12
+  }
+}

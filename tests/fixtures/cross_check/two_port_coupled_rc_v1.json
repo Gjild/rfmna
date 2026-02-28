@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "fixture_id": "two_port_coupled_rc_v1",
+  "scenario": "two_port_coupled_rc",
+  "reference": {
+    "source": "docs/dev/cross_check_reference_tolerance_policy.md",
+    "equations": "eq-2"
+  },
+  "tolerance_source": "docs/dev/tolerances/regression_baseline_v1.yaml",
+  "tolerance_profiles": {
+    "y": "rf_matrix_tight",
+    "z": "rf_matrix_tight",
+    "s": "rf_matrix_loose"
+  },
+  "frequencies_hz": [
+    1000.0,
+    1000000.0,
+    1000000000.0
+  ],
+  "z0_ohm": 50.0,
+  "ports": [
+    "P1",
+    "P2"
+  ],
+  "parameters": {
+    "g1_s": 0.012,
+    "g2_s": 0.018,
+    "g12_s": 0.004,
+    "c1_f": 3e-12,
+    "c2_f": 5e-12,
+    "c12_f": 1e-12
+  }
+}

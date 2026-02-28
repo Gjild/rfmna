@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "policy": "canonical_json_sha256",
+  "hashes": [
+    {
+      "fixture": "tests/fixtures/cross_check/one_port_shunt_rc_v1.json",
+      "canonical_sha256": "6b31b21411c5dc059d0039bca717dbdd41c25b974b520f5a5254d0a588d9c8b7"
+    },
+    {
+      "fixture": "tests/fixtures/cross_check/two_port_coupled_rc_v1.json",
+      "canonical_sha256": "8dd7b0a26a3f82c3f13a9813c2b79b0571d3f2f60e1d9849570a1edd99123daf"
+    }
+  ]
+}

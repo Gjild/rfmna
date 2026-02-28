@@ -9,7 +9,7 @@ This checklist is the authoritative Phase 2 governance gate.
 - [ ] Full frozen-evidence bundle is present whenever any frozen ID is touched.
 - [ ] Threshold/tolerance classification artifact is present and machine-valid.
 - [ ] Merge-gating tolerance sources are classified `normative_gating` only.
-- [ ] `cross_check` marker + strict-marker enforcement + non-empty lane guard are active.
+- [ ] Mandatory category lanes (`unit`, `conformance`, `property`, `regression`, `cross_check`) are active with strict-marker enforcement and non-empty lane guards.
 - [ ] Regression scaffold selector executes from `tests/regression`.
 
 ## Frozen artifact checklist (12)
@@ -52,4 +52,5 @@ Any touched frozen ID requires all of:
 - Informational checklist artifact: `.github/workflows/ci.yml` step `Phase 2 gate status (informational)`
 - Blocking governance sub-gate: `.github/workflows/ci.yml` step `Phase 2 governance sub-gate (blocking)`
 - Blocking category-bootstrap sub-gate: `.github/workflows/ci.yml` step `Phase 2 category bootstrap sub-gate (blocking)`
+- Mandatory category selection policy note: `docs/dev/phase2_ci_category_enforcement.md`
 - Executable governance checker: `python -m rfmna.governance.phase2_gate`

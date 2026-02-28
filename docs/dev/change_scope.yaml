@@ -8,5 +8,5 @@
     "migration_notes": [],
     "reproducibility_impact_statement_path": null
   },
-  "notes": "P2-07 adds deterministic Hypothesis-backed property tests under tests/property and a deterministic property-lane profile configuration. Scope is test/config only; no frozen artifacts are touched."
+  "notes": "P2-09 enforces explicit CI lanes for unit/conformance/property/regression/cross_check with per-lane non-empty collection guards, strict-marker/marker audit retention, thread-control conformance guard execution, AGENTS Phase 2 cross_check alignment audit, and failure artifact upload coverage for calibration/regression/cross_check diagnostics. Scope excludes frozen artifacts."
 }

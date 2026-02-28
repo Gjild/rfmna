@@ -38,6 +38,16 @@ _EVIDENCE_ALLOWED_PREFIXES: Final[dict[str, tuple[str, ...]]] = {
     "migration_notes": ("docs/spec/migration_notes/",),
     "reproducibility_impact_statement_path": ("docs/",),
 }
+_PHASE2_REQUIRED_MARKERS: Final[tuple[str, ...]] = (
+    "unit",
+    "conformance",
+    "property",
+    "regression",
+    "cross_check",
+)
+_AGENTS_PHASE2_CROSS_CHECK_POLICY_FRAGMENT: Final[str] = (
+    "`cross_check` (mandatory for Phase 2 robustness work"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -836,6 +846,28 @@ def _load_text_if_present(*, path: Path, errors: list[str], label: str) -> str:
         return ""
 
 
+def _extract_pytest_declared_markers(pytest_ini_text: str) -> tuple[str, ...]:
+    markers: list[str] = []
+    in_markers_block = False
+    for line in pytest_ini_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("markers"):
+            in_markers_block = True
+            continue
+        if not in_markers_block:
+            continue
+
+        if not line.startswith((" ", "\t")):
+            break
+        if not stripped:
+            continue
+
+        marker_name = stripped.split(":", maxsplit=1)[0].strip().split()[0]
+        if marker_name and marker_name not in markers:
+            markers.append(marker_name)
+    return tuple(markers)
+
+
 def evaluate_category_bootstrap_gate(*, repo_root: Path) -> GateResult:
     errors: list[str] = []
 
@@ -845,8 +877,15 @@ def evaluate_category_bootstrap_gate(*, repo_root: Path) -> GateResult:
     )
     if "--strict-markers" not in pytest_ini_text:
         errors.append("pytest.ini must enable --strict-markers")
-    if "cross_check" not in pytest_ini_text:
-        errors.append("pytest.ini markers must declare cross_check")
+    declared_markers = set(_extract_pytest_declared_markers(pytest_ini_text))
+    missing_markers = tuple(
+        marker for marker in _PHASE2_REQUIRED_MARKERS if marker not in declared_markers
+    )
+    if missing_markers:
+        errors.append(
+            "pytest.ini markers must declare all mandatory Phase 2 categories: "
+            + ", ".join(missing_markers)
+        )
 
     cross_check_dir = repo_root / "tests/cross_check"
     cross_check_tests = (
@@ -868,6 +907,37 @@ def evaluate_category_bootstrap_gate(*, repo_root: Path) -> GateResult:
     if not regression_note.exists():
         errors.append("regression fixture/schema convention note is missing")
 
+    category_policy_note = repo_root / "docs/dev/phase2_ci_category_enforcement.md"
+    category_policy_text = _load_text_if_present(
+        path=category_policy_note,
+        errors=errors,
+        label="Phase 2 CI category enforcement policy note",
+    )
+    for fragment in (
+        "`unit`",
+        "`conformance`",
+        "`property`",
+        "`regression`",
+        "`cross_check`",
+        "non-empty",
+        "--strict-markers",
+    ):
+        if fragment not in category_policy_text:
+            errors.append(
+                "Phase 2 CI category enforcement note missing required fragment: " + fragment
+            )
+
+    agents_text = _load_text_if_present(
+        path=repo_root / "AGENTS.md",
+        errors=errors,
+        label="AGENTS policy file",
+    )
+    if _AGENTS_PHASE2_CROSS_CHECK_POLICY_FRAGMENT not in agents_text:
+        errors.append(
+            "AGENTS.md Phase 2 cross_check policy drift detected; open a separate "
+            "governance-labeled task/PR and do not bundle AGENTS.md edits into P2-09."
+        )
+
     workflow_text = _load_text_if_present(
         path=repo_root / ".github/workflows/ci.yml",
         errors=errors,
@@ -876,9 +946,22 @@ def evaluate_category_bootstrap_gate(*, repo_root: Path) -> GateResult:
     required_fragments = (
         "Phase 2 governance sub-gate (blocking)",
         "Phase 2 category bootstrap sub-gate (blocking)",
-        "uv run pytest -m cross_check --collect-only -q",
-        "uv run pytest -m cross_check",
+        "Audit AGENTS Phase 2 cross_check policy alignment",
+        "uv run pytest -m unit --collect-only -q",
+        "uv run pytest -m unit --junitxml=test-reports/unit.xml",
+        "uv run pytest -m conformance --collect-only -q",
+        "Tests (thread-controls conformance guard)",
+        "test_thread_controls_conformance.py::test_ci_workflow_declares_deterministic_thread_defaults",
+        "test_thread_controls_conformance.py::test_envrc_declares_deterministic_thread_defaults",
+        "uv run pytest -m conformance --junitxml=test-reports/conformance.xml",
+        "uv run pytest -m property --collect-only -q",
+        "uv run pytest -m property --junitxml=test-reports/property.xml",
+        "uv run pytest -m regression --collect-only -q",
+        "uv run pytest -m regression --junitxml=test-reports/regression.xml",
         "uv run pytest tests/regression -m regression -q",
+        "uv run pytest -m cross_check --collect-only -q",
+        "uv run pytest -m cross_check --junitxml=test-reports/cross_check.xml",
+        "Upload calibration/regression/cross_check diagnostics (failure)",
     )
     for fragment in required_fragments:
         if fragment not in workflow_text:

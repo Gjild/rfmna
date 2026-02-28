@@ -1,5 +1,25 @@
 {
   "schema_version": 1,
   "status": "calibration_only",
-  "notes": "Seed calibration artifact. CI merge-gating checks must not consume this file."
+  "notes": "P2-08 calibration scratchpad. CI merge-gating checks must not consume this file.",
+  "candidate_profiles": {
+    "cross_check_y_candidate": {
+      "rtol": 1e-12,
+      "atol": 1e-12
+    },
+    "cross_check_z_candidate": {
+      "rtol": 1e-12,
+      "atol": 1e-12
+    },
+    "cross_check_s_candidate": {
+      "rtol": 1e-09,
+      "atol": 1e-09
+    }
+  },
+  "provenance": {
+    "task_id": "P2-08",
+    "calibration_script": "scripts/cross_check/calibrate_tolerances.py",
+    "dataset_glob": "tests/fixtures/cross_check/*.json",
+    "policy_doc": "docs/dev/cross_check_reference_tolerance_policy.md"
+  }
 }
