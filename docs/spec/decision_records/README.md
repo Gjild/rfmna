@@ -45,3 +45,5 @@ Example:
 
 - `2026-02-27-phase1-freeze-baseline-v4-0-0.md`:
   establishes and governs the v4.0.0 frozen-artifact baseline used by Phase 1 work.
+- `2026-02-28-p2-02-fallback-ladder-rf-hardening.md`:
+  governs P2-02 fallback ladder and RF conversion hardening scope for v0.1.1.

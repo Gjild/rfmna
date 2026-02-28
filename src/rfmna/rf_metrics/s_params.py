@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 from scipy.sparse import csc_matrix, diags, eye  # type: ignore[import-untyped]
 
 from rfmna.diagnostics import DiagnosticEvent, PortContext, Severity, SolverStage, sort_diagnostics
-from rfmna.solver import SolveResult, solve_linear_system
+from rfmna.solver import FallbackRunConfig, SolveResult, solve_linear_system
 from rfmna.solver.backend import SparseComplexMatrix
 
 from .y_params import YParameterResult
@@ -139,7 +139,7 @@ def _convert_to_s(  # noqa: PLR0912, PLR0913, PLR0915
     if n_ports not in (1, 2):
         raise ValueError("Phase 1 S conversion supports exactly 1 or 2 ports")
 
-    solver = solve_point if solve_point is not None else solve_linear_system
+    solver = solve_point if solve_point is not None else _default_conversion_solve_point()
     complex_nan = np.complex128(complex(float("nan"), float("nan")))
     s_values = np.full((n_points, n_ports, n_ports), complex_nan, dtype=np.complex128)
     output_status = np.full(n_points, "fail", dtype=np.dtype("<U8"))
@@ -241,6 +241,26 @@ def _convert_to_s(  # noqa: PLR0912, PLR0913, PLR0915
                 output_point_status = "fail"
                 break
 
+            if _conversion_attempt_uses_gmin(solve_result):
+                diagnostics_lists[point_index].append(
+                    _point_error(
+                        code=_SINGULAR_CODE,
+                        message="S conversion rejected: gmin regularization is forbidden in conversion math",
+                        suggested_action="use default conversion solver controls without gmin regularization",
+                        stage=SolverStage.POSTPROCESS,
+                        point_index=point_index,
+                        frequency_hz=frequency_hz,
+                        witness={
+                            "column_index": column_index,
+                            "conversion_source": conversion_source,
+                            "reason": "gmin_regularization_forbidden",
+                        },
+                    )
+                )
+                conversion_failed = True
+                output_point_status = "fail"
+                break
+
             if solve_result.status == "fail" or solve_result.x is None:
                 diagnostics_lists[point_index].append(
                     _point_error(
@@ -266,6 +286,15 @@ def _convert_to_s(  # noqa: PLR0912, PLR0913, PLR0915
 
             if solve_result.status == "degraded" and output_point_status == "pass":
                 output_point_status = "degraded"
+            diagnostics_lists[point_index].extend(
+                _mapped_solver_warnings(
+                    solve_result=solve_result,
+                    point_index=point_index,
+                    frequency_hz=frequency_hz,
+                    column_index=column_index,
+                    conversion_source=conversion_source,
+                )
+            )
 
             point_s[:, column_index] = np.asarray(solve_result.x, dtype=np.complex128)
 
@@ -327,6 +356,51 @@ class _Z0Failure:
     message: str
     port_id: str | None
     witness: dict[str, object]
+
+
+def _default_conversion_solve_point() -> SSolvePointFn:
+    conversion_run_config = FallbackRunConfig(enable_gmin=False)
+
+    def _solve(A: SparseComplexMatrix, b: NDArray[np.complex128]) -> SolveResult:
+        return solve_linear_system(A, b, run_config=conversion_run_config)
+
+    return _solve
+
+
+def _mapped_solver_warnings(  # noqa: PLR0913
+    *,
+    solve_result: SolveResult,
+    point_index: int,
+    frequency_hz: float,
+    column_index: int,
+    conversion_source: SConversionSource,
+) -> tuple[DiagnosticEvent, ...]:
+    mapped: list[DiagnosticEvent] = []
+    for warning in solve_result.warnings:
+        mapped.append(
+            DiagnosticEvent(
+                code=warning.code,
+                severity=Severity.WARNING,
+                message=warning.message,
+                suggested_action="review warning and conversion matrix conditioning",
+                solver_stage=SolverStage.SOLVE,
+                element_id=_S_PARAM_ELEMENT_ID,
+                frequency_hz=frequency_hz,
+                frequency_index=point_index,
+                witness={
+                    "column_index": column_index,
+                    "conversion_source": conversion_source,
+                    "warning_code": warning.code,
+                },
+            )
+        )
+    return tuple(sort_diagnostics(mapped))
+
+
+def _conversion_attempt_uses_gmin(solve_result: SolveResult) -> bool:
+    return any(
+        row.stage == "gmin" and row.stage_state == "run" for row in solve_result.attempt_trace
+    )
 
 
 def _validate_z0(

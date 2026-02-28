@@ -16,7 +16,7 @@ from rfmna.rf_metrics import (
     extract_zin_zout,
 )
 from rfmna.rf_metrics.impedance import ZinZoutResult
-from rfmna.solver import SolveResult, solve_linear_system
+from rfmna.solver import FallbackRunConfig, SolveResult, solve_linear_system
 from rfmna.solver.backend import SparseComplexMatrix
 
 from .types import (
@@ -120,6 +120,22 @@ class SolvePointFn(Protocol):
     ) -> SolveResult: ...
 
 
+def _default_mna_solve_point(*, node_voltage_count: int) -> SolvePointFn:
+    def _solve(A: SparseComplexMatrix, b: NDArray[np.complex128]) -> SolveResult:
+        return solve_linear_system(A, b, node_voltage_count=node_voltage_count)
+
+    return _solve
+
+
+def _default_conversion_solve_point() -> SolvePointFn:
+    conversion_run_config = FallbackRunConfig(enable_gmin=False)
+
+    def _solve(A: SparseComplexMatrix, b: NDArray[np.complex128]) -> SolveResult:
+        return solve_linear_system(A, b, run_config=conversion_run_config)
+
+    return _solve
+
+
 @dataclass(frozen=True, slots=True)
 class _SweepBuffers:
     V_nodes: NDArray[np.complex128]
@@ -131,12 +147,13 @@ class _SweepBuffers:
     status: NDArray[np.str_]
 
 
-def run_sweep(
+def run_sweep(  # noqa: PLR0913
     freq_hz: Sequence[float] | NDArray[np.float64],
     layout: SweepLayout,
     assemble_point: AssemblePointFn,
     *,
     solve_point: SolvePointFn | None = None,
+    conversion_solve_point: SolvePointFn | None = None,
     rf_request: SweepRFRequest | None = None,
 ) -> SweepResult:
     frequencies = np.asarray(freq_hz, dtype=np.float64)
@@ -148,7 +165,16 @@ def run_sweep(
     n_points = int(frequencies.shape[0])
     buffers = _allocate_buffers(n_points=n_points, n_nodes=layout.n_nodes, n_aux=layout.n_aux)
     diagnostics_lists: list[list[SweepDiagnostic]] = [list() for _ in range(n_points)]
-    solver = solve_point if solve_point is not None else solve_linear_system
+    solver = (
+        solve_point
+        if solve_point is not None
+        else _default_mna_solve_point(node_voltage_count=layout.n_nodes)
+    )
+    conversion_solver = (
+        conversion_solve_point
+        if conversion_solve_point is not None
+        else _default_conversion_solve_point()
+    )
 
     for point_index, frequency in enumerate(frequencies):
         frequency_hz = float(frequency)
@@ -261,7 +287,9 @@ def run_sweep(
             frequencies=frequencies,
             rf_request=rf_request,
             assemble_point=assemble_point,
-            solve_point=solve_point,
+            solve_point=solver,
+            conversion_solve_point=conversion_solver,
+            node_voltage_count=layout.n_nodes,
         )
         if rf_request is not None
         else None
@@ -283,17 +311,24 @@ def run_sweep(
     )
 
 
-def _compute_rf_payloads(  # noqa: PLR0912
+def _compute_rf_payloads(  # noqa: PLR0912, PLR0913
     *,
     frequencies: NDArray[np.float64],
     rf_request: SweepRFRequest,
     assemble_point: AssemblePointFn,
     solve_point: SolvePointFn | None,
+    conversion_solve_point: SolvePointFn | None = None,
+    node_voltage_count: int | None = None,
 ) -> SweepRFPayloads:
     y_result = None
     z_result = None
     impedance_result = None
     entries: list[tuple[RFMetricName, SweepRFMetricPayload]] = []
+    conversion_solver = (
+        conversion_solve_point
+        if conversion_solve_point is not None
+        else _default_conversion_solve_point()
+    )
 
     for metric_name in rf_request.metrics:
         if metric_name == "y":
@@ -303,6 +338,7 @@ def _compute_rf_payloads(  # noqa: PLR0912
                     rf_request.ports,
                     assemble_point,
                     solve_point=solve_point,
+                    node_voltage_count=node_voltage_count,
                 )
             entries.append(("y", y_result))
             continue
@@ -314,6 +350,7 @@ def _compute_rf_payloads(  # noqa: PLR0912
                     rf_request.ports,
                     assemble_point,
                     solve_point=solve_point,
+                    node_voltage_count=node_voltage_count,
                     extraction_mode="direct",
                 )
             entries.append(("z", z_result))
@@ -327,6 +364,7 @@ def _compute_rf_payloads(  # noqa: PLR0912
                         rf_request.ports,
                         assemble_point,
                         solve_point=solve_point,
+                        node_voltage_count=node_voltage_count,
                     )
                 entries.append(
                     (
@@ -334,7 +372,7 @@ def _compute_rf_payloads(  # noqa: PLR0912
                         convert_y_to_s(
                             y_result,
                             z0_ohm=rf_request.z0_ohm,
-                            solve_point=solve_point,
+                            solve_point=conversion_solver,
                         ),
                     )
                 )
@@ -345,6 +383,7 @@ def _compute_rf_payloads(  # noqa: PLR0912
                         rf_request.ports,
                         assemble_point,
                         solve_point=solve_point,
+                        node_voltage_count=node_voltage_count,
                         extraction_mode="direct",
                     )
                 entries.append(
@@ -353,7 +392,7 @@ def _compute_rf_payloads(  # noqa: PLR0912
                         convert_z_to_s(
                             z_result,
                             z0_ohm=rf_request.z0_ohm,
-                            solve_point=solve_point,
+                            solve_point=conversion_solver,
                         ),
                     )
                 )
@@ -366,6 +405,7 @@ def _compute_rf_payloads(  # noqa: PLR0912
                     rf_request.ports,
                     assemble_point,
                     solve_point=solve_point,
+                    node_voltage_count=node_voltage_count,
                     input_port_id=rf_request.input_port_id,
                     output_port_id=rf_request.output_port_id,
                 )

@@ -9,7 +9,7 @@ from scipy.sparse import csc_matrix  # type: ignore[import-untyped]
 
 from rfmna.diagnostics import canonical_witness_json, diagnostic_sort_key
 from rfmna.rf_metrics import PortBoundary, extract_y_parameters
-from rfmna.solver import SolveResult, solve_linear_system
+from rfmna.solver import SolveResult, load_solver_threshold_config, solve_linear_system
 
 pytestmark = pytest.mark.unit
 
@@ -145,3 +145,62 @@ def test_diagnostics_use_canonical_sort_and_stable_witness_serialization() -> No
     assert [canonical_witness_json(diag.witness) for diag in point_diags] == [
         canonical_witness_json(diag.witness) for diag in current.diagnostics_by_point[0]
     ]
+
+
+def test_default_solver_infers_node_voltage_count_for_mna_solves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    ports = (PortBoundary(port_id="P1", p_plus_index=0, p_minus_index=None),)
+    calls: list[dict[str, object]] = []
+    real_solve = solve_linear_system
+
+    def spy_solve(matrix: object, rhs: np.ndarray, **kwargs: object) -> SolveResult:
+        calls.append(dict(kwargs))
+        return real_solve(matrix, rhs, **kwargs)
+
+    monkeypatch.setattr("rfmna.rf_metrics.y_params.solve_linear_system", spy_solve)
+
+    def assemble(_: int, __: float) -> tuple[csc_matrix, np.ndarray]:
+        return (
+            csc_matrix(np.asarray([[1.0 + 0.0j]], dtype=np.complex128)),
+            np.asarray([0.0 + 0.0j], dtype=np.complex128),
+        )
+
+    result = extract_y_parameters(frequencies, ports, assemble)
+    assert list(result.status.astype(str)) == ["pass"]
+    assert calls
+    assert all(call.get("node_voltage_count") == 1 for call in calls)
+
+
+def test_solver_warnings_are_propagated_with_point_and_frequency_context() -> None:
+    thresholds = load_solver_threshold_config()
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    ports = (PortBoundary(port_id="P1", p_plus_index=0, p_minus_index=None),)
+    warn_value = (thresholds.conditioning.warn_max + thresholds.conditioning.fail_max) * 0.5
+
+    class _ConstEstimator:
+        def estimate(self, A: object) -> float | None:
+            del A
+            return warn_value
+
+    def assemble(_: int, __: float) -> tuple[csc_matrix, np.ndarray]:
+        return (
+            csc_matrix(np.asarray([[1.0 + 0.0j]], dtype=np.complex128)),
+            np.asarray([0.0 + 0.0j], dtype=np.complex128),
+        )
+
+    def solve_point(matrix: object, rhs: np.ndarray) -> SolveResult:
+        return solve_linear_system(
+            matrix, rhs, node_voltage_count=1, condition_estimator=_ConstEstimator()
+        )
+
+    result = extract_y_parameters(frequencies, ports, assemble, solve_point=solve_point)
+    point_diags = result.diagnostics_by_point[0]
+    assert list(result.status.astype(str)) == ["pass"]
+    assert [diag.code for diag in point_diags] == [
+        thresholds.conditioning.ill_conditioned_warning_code
+    ]
+    assert point_diags[0].frequency_index == 0
+    assert point_diags[0].frequency_hz == 1.0
+    assert point_diags[0].solver_stage == "solve"

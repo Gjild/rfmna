@@ -85,6 +85,7 @@ def extract_y_parameters(  # noqa: PLR0912, PLR0915
     assemble_point: YAssemblePointFn,
     *,
     solve_point: YSolvePointFn | None = None,
+    node_voltage_count: int | None = None,
 ) -> YParameterResult:
     frequencies = np.asarray(freq_hz, dtype=np.float64)
     if frequencies.ndim != 1:
@@ -96,13 +97,21 @@ def extract_y_parameters(  # noqa: PLR0912, PLR0915
     n_ports = len(canonical_ports)
     if n_ports not in (1, 2):
         raise ValueError("Phase 1 Y extraction supports exactly 1 or 2 ports")
+    inferred_node_voltage_count = _infer_node_voltage_count(canonical_ports)
+    resolved_node_voltage_count = (
+        inferred_node_voltage_count if node_voltage_count is None else node_voltage_count
+    )
 
     n_points = int(frequencies.shape[0])
     complex_nan = np.complex128(complex(float("nan"), float("nan")))
     y_values = np.full((n_points, n_ports, n_ports), complex_nan, dtype=np.complex128)
     status = np.full(n_points, "fail", dtype=np.dtype("<U8"))
     diagnostics_lists: list[list[DiagnosticEvent]] = [list() for _ in range(n_points)]
-    solver = solve_point if solve_point is not None else solve_linear_system
+    solver = (
+        solve_point
+        if solve_point is not None
+        else _default_mna_solve_point(node_voltage_count=resolved_node_voltage_count)
+    )
 
     for point_index, frequency in enumerate(frequencies):
         frequency_hz = float(frequency)
@@ -207,6 +216,15 @@ def extract_y_parameters(  # noqa: PLR0912, PLR0915
 
             if solve_result.status == "degraded" and point_status == "pass":
                 point_status = "degraded"
+            diagnostics_lists[point_index].extend(
+                _mapped_solver_warnings(
+                    solve_result=solve_result,
+                    point_index=point_index,
+                    frequency_hz=frequency_hz,
+                    column_index=column_index,
+                    driven_port_id=driven_port.port_id,
+                )
+            )
 
             currents, current_error = _extract_port_currents(
                 solve_result=solve_result,
@@ -259,6 +277,26 @@ def extract_y_parameters(  # noqa: PLR0912, PLR0915
     )
 
 
+def _default_mna_solve_point(*, node_voltage_count: int) -> YSolvePointFn:
+    if node_voltage_count < 0:
+        raise ValueError("node_voltage_count must be >= 0")
+
+    def _solve(A: SparseComplexMatrix, b: NDArray[np.complex128]) -> SolveResult:
+        return solve_linear_system(A, b, node_voltage_count=node_voltage_count)
+
+    return _solve
+
+
+def _infer_node_voltage_count(ports: Sequence[PortBoundary]) -> int:
+    max_index = -1
+    for port in ports:
+        if port.p_plus_index is not None:
+            max_index = max(max_index, port.p_plus_index)
+        if port.p_minus_index is not None:
+            max_index = max(max_index, port.p_minus_index)
+    return max_index + 1
+
+
 def _mapped_boundary_diagnostics(
     *,
     result: BoundaryInjectionResult,
@@ -285,6 +323,36 @@ def _mapped_boundary_diagnostics(
                     "boundary_witness": diagnostic.witness,
                     "column_index": column_index,
                     "driven_port_id": driven_port_id,
+                },
+            )
+        )
+    return tuple(sort_diagnostics(mapped))
+
+
+def _mapped_solver_warnings(  # noqa: PLR0913
+    *,
+    solve_result: SolveResult,
+    point_index: int,
+    frequency_hz: float,
+    column_index: int,
+    driven_port_id: str,
+) -> tuple[DiagnosticEvent, ...]:
+    mapped: list[DiagnosticEvent] = []
+    for warning in solve_result.warnings:
+        mapped.append(
+            DiagnosticEvent(
+                code=warning.code,
+                severity=Severity.WARNING,
+                message=warning.message,
+                suggested_action="review warning and solver metadata",
+                solver_stage=SolverStage.SOLVE,
+                element_id=_Y_EXTRACT_ELEMENT_ID,
+                frequency_hz=frequency_hz,
+                frequency_index=point_index,
+                witness={
+                    "column_index": column_index,
+                    "driven_port_id": driven_port_id,
+                    "warning_code": warning.code,
                 },
             )
         )

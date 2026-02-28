@@ -11,6 +11,7 @@ import rfmna.rf_metrics.z_params as z_params_module
 from rfmna.diagnostics import canonical_witness_json, diagnostic_sort_key
 from rfmna.rf_metrics import PortBoundary, extract_z_parameters
 from rfmna.rf_metrics.y_params import YParameterResult
+from rfmna.solver import SolveResult, load_solver_threshold_config, solve_linear_system
 
 pytestmark = pytest.mark.unit
 
@@ -237,3 +238,184 @@ def test_diagnostics_are_canonically_sorted_with_stable_witnesses() -> None:
     assert [canonical_witness_json(diag.witness) for diag in point_diags] == [
         canonical_witness_json(diag.witness) for diag in current.diagnostics_by_point[0]
     ]
+
+
+def test_default_direct_solver_infers_node_voltage_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    ports = (PortBoundary(port_id="P1", p_plus_index=0, p_minus_index=None),)
+    calls: list[dict[str, object]] = []
+    real_solve = solve_linear_system
+
+    def spy_solve(matrix: object, rhs: np.ndarray, **kwargs: object) -> SolveResult:
+        calls.append(dict(kwargs))
+        return real_solve(matrix, rhs, **kwargs)
+
+    monkeypatch.setattr(z_params_module, "solve_linear_system", spy_solve)
+
+    def assemble(_: int, __: float) -> tuple[csc_matrix, np.ndarray]:
+        return (
+            csc_matrix(np.asarray([[1.0 + 0.0j]], dtype=np.complex128)),
+            np.asarray([0.0 + 0.0j], dtype=np.complex128),
+        )
+
+    result = extract_z_parameters(frequencies, ports, assemble, extraction_mode="direct")
+    assert list(result.status.astype(str)) == ["pass"]
+    assert calls
+    assert all(call.get("node_voltage_count") == 1 for call in calls)
+
+
+def test_y_to_z_conversion_uses_no_gmin_regularization_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    ports = (
+        PortBoundary(port_id="P1", p_plus_index=0, p_minus_index=None),
+        PortBoundary(port_id="P2", p_plus_index=1, p_minus_index=None),
+    )
+    y_matrix = np.asarray(
+        [[0.6 + 0.0j, -0.2 + 0.0j], [-0.2 + 0.0j, 0.5 + 0.0j]], dtype=np.complex128
+    )
+    calls: list[dict[str, object]] = []
+    real_solve = solve_linear_system
+
+    def spy_solve(matrix: object, rhs: np.ndarray, **kwargs: object) -> SolveResult:
+        calls.append(dict(kwargs))
+        return real_solve(matrix, rhs, **kwargs)
+
+    monkeypatch.setattr(z_params_module, "solve_linear_system", spy_solve)
+
+    def assemble(_: int, __: float) -> tuple[csc_matrix, np.ndarray]:
+        return (
+            csc_matrix(y_matrix),
+            np.asarray([0.0 + 0.0j, 0.0 + 0.0j], dtype=np.complex128),
+        )
+
+    result = extract_z_parameters(frequencies, ports, assemble, extraction_mode="y_to_z")
+    assert list(result.status.astype(str)) == ["pass"]
+
+    mna_calls = [call for call in calls if "node_voltage_count" in call]
+    conversion_calls = [call for call in calls if "run_config" in call]
+    assert mna_calls
+    assert all(call.get("node_voltage_count") == len(ports) for call in mna_calls)
+    assert conversion_calls
+    assert all(call["run_config"].enable_gmin is False for call in conversion_calls)
+
+
+def test_y_to_z_conversion_uses_no_gmin_default_solver_path() -> None:
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    ports = (
+        PortBoundary(port_id="P1", p_plus_index=0, p_minus_index=None),
+        PortBoundary(port_id="P2", p_plus_index=1, p_minus_index=None),
+    )
+    y_matrix = np.asarray(
+        [[0.6 + 0.0j, -0.2 + 0.0j], [-0.2 + 0.0j, 0.5 + 0.0j]], dtype=np.complex128
+    )
+
+    class _ConstEstimator:
+        def estimate(self, A: object) -> float | None:
+            del A
+            return None
+
+    def assemble(_: int, __: float) -> tuple[csc_matrix, np.ndarray]:
+        return (
+            csc_matrix(y_matrix),
+            np.asarray([0.0 + 0.0j, 0.0 + 0.0j], dtype=np.complex128),
+        )
+
+    def solve_point(matrix: object, rhs: np.ndarray) -> SolveResult:
+        return solve_linear_system(
+            matrix, rhs, node_voltage_count=2, condition_estimator=_ConstEstimator()
+        )
+
+    result = extract_z_parameters(
+        frequencies, ports, assemble, solve_point=solve_point, extraction_mode="y_to_z"
+    )
+    point_diags = result.diagnostics_by_point[0]
+    warning_codes = [diag.code for diag in point_diags if diag.severity == "warning"]
+    assert list(result.status.astype(str)) == ["pass"]
+    assert warning_codes == []
+
+
+def test_solver_warnings_propagate_for_direct_extraction_columns() -> None:
+    thresholds = load_solver_threshold_config()
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    ports = (PortBoundary(port_id="P1", p_plus_index=0, p_minus_index=None),)
+
+    class _ConstEstimator:
+        def estimate(self, A: object) -> float | None:
+            del A
+            return None
+
+    def assemble(_: int, __: float) -> tuple[csc_matrix, np.ndarray]:
+        return (
+            csc_matrix(np.asarray([[0.5 + 0.0j]], dtype=np.complex128)),
+            np.asarray([0.0 + 0.0j], dtype=np.complex128),
+        )
+
+    def solve_point(matrix: object, rhs: np.ndarray) -> SolveResult:
+        return solve_linear_system(
+            matrix, rhs, node_voltage_count=1, condition_estimator=_ConstEstimator()
+        )
+
+    result = extract_z_parameters(
+        frequencies, ports, assemble, solve_point=solve_point, extraction_mode="direct"
+    )
+    point_diags = result.diagnostics_by_point[0]
+    warning_codes = [diag.code for diag in point_diags if diag.severity == "warning"]
+    assert list(result.status.astype(str)) == ["pass"]
+    assert warning_codes == [thresholds.conditioning.unavailable_warning_code]
+    assert point_diags[0].frequency_index == 0
+
+
+def test_y_to_z_conversion_not_rescued_by_custom_mna_solver_gmin() -> None:
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    ports = (
+        PortBoundary(port_id="P1", p_plus_index=0, p_minus_index=None),
+        PortBoundary(port_id="P2", p_plus_index=1, p_minus_index=None),
+    )
+    singular_y = np.asarray(
+        [[0.0 + 0.0j, 0.0 + 0.0j], [0.0 + 0.0j, 0.0 + 0.0j]], dtype=np.complex128
+    )
+
+    def assemble(_: int, __: float) -> tuple[csc_matrix, np.ndarray]:
+        return (
+            csc_matrix(singular_y),
+            np.asarray([0.0 + 0.0j, 0.0 + 0.0j], dtype=np.complex128),
+        )
+
+    def solve_point(matrix: object, rhs: np.ndarray) -> SolveResult:
+        return solve_linear_system(matrix, rhs, node_voltage_count=2)
+
+    result = extract_z_parameters(
+        frequencies, ports, assemble, solve_point=solve_point, extraction_mode="y_to_z"
+    )
+    assert list(result.status.astype(str)) == ["fail"]
+    assert [diag.code for diag in result.diagnostics_by_point[0]] == ["E_NUM_ZBLOCK_SINGULAR"]
+
+
+def test_explicit_node_voltage_count_covers_internal_nodes_not_in_ports() -> None:
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    ports = (PortBoundary(port_id="P1", p_plus_index=0, p_minus_index=None),)
+    singular_with_internal_node = np.asarray(
+        [[0.0 + 0.0j, 0.0 + 0.0j], [0.0 + 0.0j, 0.0 + 0.0j]], dtype=np.complex128
+    )
+
+    def assemble(_: int, __: float) -> tuple[csc_matrix, np.ndarray]:
+        return (
+            csc_matrix(singular_with_internal_node),
+            np.asarray([0.0 + 0.0j, 0.0 + 0.0j], dtype=np.complex128),
+        )
+
+    default_result = extract_z_parameters(frequencies, ports, assemble, extraction_mode="direct")
+    explicit_result = extract_z_parameters(
+        frequencies,
+        ports,
+        assemble,
+        node_voltage_count=2,
+        extraction_mode="direct",
+    )
+
+    assert list(default_result.status.astype(str)) == ["fail"]
+    assert list(explicit_result.status.astype(str)) == ["pass"]

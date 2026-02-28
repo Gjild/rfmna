@@ -8,7 +8,13 @@ import pytest
 from scipy.sparse import csc_matrix  # type: ignore[import-untyped]
 
 import rfmna.rf_metrics.impedance as impedance_module
-from rfmna.diagnostics import canonical_witness_json, diagnostic_sort_key
+from rfmna.diagnostics import (
+    DiagnosticEvent,
+    Severity,
+    SolverStage,
+    canonical_witness_json,
+    diagnostic_sort_key,
+)
 from rfmna.rf_metrics import PortBoundary, extract_zin_zout
 from rfmna.rf_metrics.z_params import ZParameterResult
 
@@ -70,7 +76,7 @@ def test_short_fixture_yields_near_zero_impedance() -> None:
     assert result.diagnostics_by_point == ((),)
 
 
-def test_open_fixture_emits_fail_sentinel_and_explicit_singular_diagnostic() -> None:
+def test_open_fixture_uses_gmin_retry_and_retains_point_ordering() -> None:
     frequencies = np.asarray([1.0, 2.0], dtype=np.float64)
     ports = (PortBoundary(port_id="P1", p_plus_index=0, p_minus_index=None),)
 
@@ -81,13 +87,12 @@ def test_open_fixture_emits_fail_sentinel_and_explicit_singular_diagnostic() -> 
         )
 
     result = extract_zin_zout(frequencies, ports, assemble)
-    assert np.isnan(result.zin.real).all()
-    assert np.isnan(result.zin.imag).all()
-    assert np.isnan(result.zout.real).all()
-    assert np.isnan(result.zout.imag).all()
-    assert list(result.status.astype(str)) == ["fail", "fail"]
-    assert "E_NUM_SINGULAR_MATRIX" in [diag.code for diag in result.diagnostics_by_point[0]]
-    assert "E_NUM_SINGULAR_MATRIX" in [diag.code for diag in result.diagnostics_by_point[1]]
+    assert np.isfinite(result.zin.real).all()
+    assert np.isfinite(result.zin.imag).all()
+    assert np.isfinite(result.zout.real).all()
+    assert np.isfinite(result.zout.imag).all()
+    assert list(result.status.astype(str)) == ["pass", "pass"]
+    assert result.diagnostics_by_point == ((), ())
 
 
 def test_singular_boundary_fixture_emits_explicit_boundary_diagnostic() -> None:
@@ -209,6 +214,48 @@ def test_undefined_impedance_emits_explicit_diagnostic_code(
     assert np.isnan(result.zout.real).all()
     assert np.isnan(result.zout.imag).all()
     assert [diag.code for diag in result.diagnostics_by_point[0]] == ["E_NUM_IMPEDANCE_UNDEFINED"]
+
+
+def test_z_solver_warnings_are_preserved_in_zin_zout_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    ports = (PortBoundary(port_id="P1", p_plus_index=0, p_minus_index=None),)
+    warning = DiagnosticEvent(
+        code="W_NUM_ILL_CONDITIONED",
+        severity=Severity.WARNING,
+        message="warning from upstream z solve",
+        suggested_action="inspect conditioning",
+        solver_stage=SolverStage.SOLVE,
+        element_id="rf_z_params",
+        frequency_hz=1.0,
+        frequency_index=0,
+        witness={"source": "unit"},
+    )
+
+    def fake_extract_z_parameters(*args: object, **kwargs: object) -> ZParameterResult:
+        del args, kwargs
+        return ZParameterResult(
+            frequencies_hz=np.asarray([1.0], dtype=np.float64),
+            port_ids=("P1",),
+            z=np.asarray([[[2.0 + 0.0j]]], dtype=np.complex128),
+            status=np.asarray(["pass"]),
+            diagnostics_by_point=((warning,),),
+            extraction_mode="direct",
+        )
+
+    monkeypatch.setattr(impedance_module, "extract_z_parameters", fake_extract_z_parameters)
+
+    def assemble(_: int, __: float) -> tuple[csc_matrix, np.ndarray]:
+        return (
+            csc_matrix(np.asarray([[1.0 + 0.0j]], dtype=np.complex128)),
+            np.asarray([0.0 + 0.0j], dtype=np.complex128),
+        )
+
+    result = extract_zin_zout(frequencies, ports, assemble)
+
+    assert list(result.status.astype(str)) == ["pass"]
+    assert [diag.code for diag in result.diagnostics_by_point[0]] == ["W_NUM_ILL_CONDITIONED"]
 
 
 def test_diagnostics_sort_and_witness_stability_for_selection_errors() -> None:

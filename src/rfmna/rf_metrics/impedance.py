@@ -74,6 +74,7 @@ def extract_zin_zout(  # noqa: PLR0913
     assemble_point: ZAssemblePointFn,
     *,
     solve_point: ZSolvePointFn | None = None,
+    node_voltage_count: int | None = None,
     input_port_id: str | None = None,
     output_port_id: str | None = None,
 ) -> ZinZoutResult:
@@ -82,6 +83,7 @@ def extract_zin_zout(  # noqa: PLR0913
         ports,
         assemble_point,
         solve_point=solve_point,
+        node_voltage_count=node_voltage_count,
         extraction_mode="direct",
     )
 

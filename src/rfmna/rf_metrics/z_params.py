@@ -9,7 +9,12 @@ from numpy.typing import NDArray
 from scipy.sparse import csc_matrix  # type: ignore[import-untyped]
 
 from rfmna.diagnostics import DiagnosticEvent, PortContext, Severity, SolverStage, sort_diagnostics
-from rfmna.solver import SolveResult, load_solver_threshold_config, solve_linear_system
+from rfmna.solver import (
+    FallbackRunConfig,
+    SolveResult,
+    load_solver_threshold_config,
+    solve_linear_system,
+)
 from rfmna.solver.backend import SparseComplexMatrix
 
 from .boundary import BoundaryInjectionResult, PortBoundary, apply_current_boundaries
@@ -86,12 +91,13 @@ class ZParameterResult:
         )
 
 
-def extract_z_parameters(  # noqa: PLR0912, PLR0915
+def extract_z_parameters(  # noqa: PLR0912, PLR0913, PLR0915
     freq_hz: Sequence[float] | NDArray[np.float64],
     ports: Sequence[PortBoundary],
     assemble_point: ZAssemblePointFn,
     *,
     solve_point: ZSolvePointFn | None = None,
+    node_voltage_count: int | None = None,
     extraction_mode: ZExtractionMode = "direct",
 ) -> ZParameterResult:
     frequencies = np.asarray(freq_hz, dtype=np.float64)
@@ -104,13 +110,22 @@ def extract_z_parameters(  # noqa: PLR0912, PLR0915
     n_ports = len(canonical_ports)
     if n_ports not in (1, 2):
         raise ValueError("Phase 1 Z extraction supports exactly 1 or 2 ports")
+    inferred_node_voltage_count = _infer_node_voltage_count(canonical_ports)
+    resolved_node_voltage_count = (
+        inferred_node_voltage_count if node_voltage_count is None else node_voltage_count
+    )
 
     n_points = int(frequencies.shape[0])
     complex_nan = np.complex128(complex(float("nan"), float("nan")))
     z_values = np.full((n_points, n_ports, n_ports), complex_nan, dtype=np.complex128)
     status = np.full(n_points, "fail", dtype=np.dtype("<U8"))
     diagnostics_lists: list[list[DiagnosticEvent]] = [list() for _ in range(n_points)]
-    solver = solve_point if solve_point is not None else solve_linear_system
+    solver = (
+        solve_point
+        if solve_point is not None
+        else _default_mna_solve_point(node_voltage_count=resolved_node_voltage_count)
+    )
+    conversion_solver = _default_conversion_solve_point()
 
     if extraction_mode == "direct":
         _extract_direct_columns(
@@ -128,6 +143,7 @@ def extract_z_parameters(  # noqa: PLR0912, PLR0915
             canonical_ports=canonical_ports,
             assemble_point=assemble_point,
             solver=solver,
+            conversion_solver=conversion_solver,
             z_values=z_values,
             status=status,
             diagnostics_lists=diagnostics_lists,
@@ -255,6 +271,15 @@ def _extract_direct_columns(  # noqa: PLR0913, PLR0915
 
             if solve_result.status == "degraded" and point_status == "pass":
                 point_status = "degraded"
+            diagnostics_lists[point_index].extend(
+                _mapped_solver_warnings(
+                    solve_result=solve_result,
+                    point_index=point_index,
+                    frequency_hz=frequency_hz,
+                    column_index=column_index,
+                    driven_port_id=driven_port.port_id,
+                )
+            )
 
             voltages, voltage_error = _extract_port_voltages(
                 solve_result=solve_result,
@@ -299,6 +324,7 @@ def _extract_via_y_to_z(  # noqa: PLR0913
     canonical_ports: tuple[PortBoundary, ...],
     assemble_point: ZAssemblePointFn,
     solver: ZSolvePointFn,
+    conversion_solver: ZSolvePointFn,
     z_values: NDArray[np.complex128],
     status: NDArray[np.str_],
     diagnostics_lists: list[list[DiagnosticEvent]],
@@ -334,7 +360,25 @@ def _extract_via_y_to_z(  # noqa: PLR0913
         for column_index in range(n_ports):
             rhs = np.zeros(n_ports, dtype=np.complex128)
             rhs[column_index] = 1.0 + 0.0j
-            solve_result = solver(y_sparse, rhs)
+            solve_result = conversion_solver(y_sparse, rhs)
+            if _conversion_attempt_uses_gmin(solve_result):
+                diagnostics_lists[point_index].append(
+                    _point_error(
+                        code=_ZBLOCK_SINGULAR_CODE,
+                        message="Y->Z conversion rejected: gmin regularization is forbidden in conversion math",
+                        suggested_action="use default conversion solver controls without gmin regularization",
+                        stage=SolverStage.POSTPROCESS,
+                        point_index=point_index,
+                        frequency_hz=frequency_hz,
+                        witness={
+                            "column_index": column_index,
+                            "reason": "gmin_regularization_forbidden",
+                        },
+                    )
+                )
+                conversion_failed = True
+                conversion_status = "fail"
+                break
             if solve_result.status == "fail" or solve_result.x is None:
                 diagnostics_lists[point_index].append(
                     _point_error(
@@ -400,6 +444,15 @@ def _extract_via_y_to_z(  # noqa: PLR0913
 
             if solve_result.status == "degraded" and conversion_status == "pass":
                 conversion_status = "degraded"
+            diagnostics_lists[point_index].extend(
+                _mapped_solver_warnings(
+                    solve_result=solve_result,
+                    point_index=point_index,
+                    frequency_hz=frequency_hz,
+                    column_index=column_index,
+                    driven_port_id=canonical_ports[column_index].port_id,
+                )
+            )
 
             z_block[:, column_index] = np.asarray(solve_result.x, dtype=np.complex128)
 
@@ -409,6 +462,41 @@ def _extract_via_y_to_z(  # noqa: PLR0913
 
         z_values[point_index, :, :] = z_block
         status[point_index] = conversion_status
+
+
+def _default_mna_solve_point(*, node_voltage_count: int) -> ZSolvePointFn:
+    if node_voltage_count < 0:
+        raise ValueError("node_voltage_count must be >= 0")
+
+    def _solve(A: SparseComplexMatrix, b: NDArray[np.complex128]) -> SolveResult:
+        return solve_linear_system(A, b, node_voltage_count=node_voltage_count)
+
+    return _solve
+
+
+def _default_conversion_solve_point() -> ZSolvePointFn:
+    conversion_run_config = FallbackRunConfig(enable_gmin=False)
+
+    def _solve(A: SparseComplexMatrix, b: NDArray[np.complex128]) -> SolveResult:
+        return solve_linear_system(A, b, run_config=conversion_run_config)
+
+    return _solve
+
+
+def _infer_node_voltage_count(ports: Sequence[PortBoundary]) -> int:
+    max_index = -1
+    for port in ports:
+        if port.p_plus_index is not None:
+            max_index = max(max_index, port.p_plus_index)
+        if port.p_minus_index is not None:
+            max_index = max(max_index, port.p_minus_index)
+    return max_index + 1
+
+
+def _conversion_attempt_uses_gmin(solve_result: SolveResult) -> bool:
+    return any(
+        row.stage == "gmin" and row.stage_state == "run" for row in solve_result.attempt_trace
+    )
 
 
 def _extract_port_voltages(  # noqa: PLR0913
@@ -513,6 +601,36 @@ def _mapped_boundary_diagnostics(
                     "boundary_witness": diagnostic.witness,
                     "column_index": column_index,
                     "driven_port_id": driven_port_id,
+                },
+            )
+        )
+    return tuple(sort_diagnostics(mapped))
+
+
+def _mapped_solver_warnings(  # noqa: PLR0913
+    *,
+    solve_result: SolveResult,
+    point_index: int,
+    frequency_hz: float,
+    column_index: int,
+    driven_port_id: str,
+) -> tuple[DiagnosticEvent, ...]:
+    mapped: list[DiagnosticEvent] = []
+    for warning in solve_result.warnings:
+        mapped.append(
+            DiagnosticEvent(
+                code=warning.code,
+                severity=Severity.WARNING,
+                message=warning.message,
+                suggested_action="review warning and solver metadata",
+                solver_stage=SolverStage.SOLVE,
+                element_id=_Z_EXTRACT_ELEMENT_ID,
+                frequency_hz=frequency_hz,
+                frequency_index=point_index,
+                witness={
+                    "column_index": column_index,
+                    "driven_port_id": driven_port_id,
+                    "warning_code": warning.code,
                 },
             )
         )

@@ -196,10 +196,22 @@ def test_id12_detection_accepts_yaml_spacing_variants_for_thread_defaults() -> N
     assert _FROZEN_ID_THREAD_DEFAULTS in touched
 
 
-def test_governance_gate_passes_for_non_frozen_change_scope_none() -> None:
+def test_governance_gate_passes_for_non_frozen_change_scope_none(tmp_path: Path) -> None:
+    change_scope_path = _write_change_scope(
+        tmp_path,
+        declared_frozen_ids="none",
+        evidence={
+            "semver_bump": None,
+            "decision_records": [],
+            "conformance_updates": [],
+            "migration_notes": [],
+            "reproducibility_impact_statement_path": None,
+        },
+    )
     result = evaluate_governance_gate(
         repo_root=_repo_root(),
         changed_paths=("docs/dev/phase2_gate.md",),
+        artifact_paths=GovernanceArtifactPaths(change_scope_path=str(change_scope_path)),
     )
     assert result.passed, result.errors
 
@@ -416,6 +428,17 @@ def test_governance_gate_rejects_schema_invalid_notes_type(tmp_path: Path) -> No
 def test_governance_gate_blocks_any_touched_normative_gating_tolerance_source_without_evidence(
     tmp_path: Path,
 ) -> None:
+    change_scope_path = _write_change_scope(
+        tmp_path,
+        declared_frozen_ids="none",
+        evidence={
+            "semver_bump": None,
+            "decision_records": [],
+            "conformance_updates": [],
+            "migration_notes": [],
+            "reproducibility_impact_statement_path": None,
+        },
+    )
     classification_path = _write_tolerance_classification(
         tmp_path,
         thresholds_classification="normative_gating",
@@ -427,7 +450,8 @@ def test_governance_gate_blocks_any_touched_normative_gating_tolerance_source_wi
         repo_root=_repo_root(),
         changed_paths=("docs/dev/tolerances/calibration_seed_v1.yaml",),
         artifact_paths=GovernanceArtifactPaths(
-            tolerance_classification_path=str(classification_path)
+            change_scope_path=str(change_scope_path),
+            tolerance_classification_path=str(classification_path),
         ),
     )
 
@@ -509,7 +533,9 @@ def test_changed_path_detection_handles_zero_sha_base_ref_without_runtime_error(
     assert isinstance(lines, dict)
 
 
-def test_governance_gate_uses_baseline_rule_table_to_block_tampering_attempt() -> None:
+def test_governance_gate_uses_baseline_rule_table_to_block_tampering_attempt(
+    tmp_path: Path,
+) -> None:
     repo_root = _repo_root()
     baseline_rule_table = _load_rule_table(
         repo_root / "docs/dev/frozen_change_governance_rules.yaml"
@@ -562,17 +588,46 @@ def test_governance_gate_uses_baseline_rule_table_to_block_tampering_attempt() -
             rule_table_data=tampered_rule_table,
             tolerance_classification_data=classification_data,
         ),
+        artifact_paths=GovernanceArtifactPaths(
+            change_scope_path=str(
+                _write_change_scope(
+                    tmp_path,
+                    declared_frozen_ids="none",
+                    evidence={
+                        "semver_bump": None,
+                        "decision_records": [],
+                        "conformance_updates": [],
+                        "migration_notes": [],
+                        "reproducibility_impact_statement_path": None,
+                    },
+                )
+            )
+        ),
     )
     assert bypass_result.passed
 
 
-def test_governance_gate_allows_governance_control_file_touch_without_frozen_detection() -> None:
+def test_governance_gate_allows_governance_control_file_touch_without_frozen_detection(
+    tmp_path: Path,
+) -> None:
+    change_scope_path = _write_change_scope(
+        tmp_path,
+        declared_frozen_ids="none",
+        evidence={
+            "semver_bump": None,
+            "decision_records": [],
+            "conformance_updates": [],
+            "migration_notes": [],
+            "reproducibility_impact_statement_path": None,
+        },
+    )
     result = evaluate_governance_gate(
         repo_root=_repo_root(),
         changed_paths=("docs/dev/phase2_gate.md", ".github/workflows/ci.yml"),
         changed_lines_by_path={
             ".github/workflows/ci.yml": ("      - name: Some non-thread-control line",),
         },
+        artifact_paths=GovernanceArtifactPaths(change_scope_path=str(change_scope_path)),
     )
     assert result.passed, result.errors
 

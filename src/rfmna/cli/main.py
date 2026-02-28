@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol, cast, runtime_checkable
 
@@ -11,6 +11,14 @@ from numpy.typing import NDArray
 from rfmna.diagnostics import DiagnosticEvent, Severity, SolverStage, sort_diagnostics
 from rfmna.parser import PreflightInput, preflight_check
 from rfmna.rf_metrics import PortBoundary, SParameterResult, YParameterResult, ZParameterResult
+from rfmna.solver import (
+    AttemptTraceRecord,
+    FallbackRunConfig,
+    SolveResult,
+)
+from rfmna.solver.backend import SparseComplexMatrix
+from rfmna.solver.repro_snapshot import build_solver_config_snapshot
+from rfmna.solver.solve import solve_linear_system
 from rfmna.sweep_engine import (
     AssemblePointFn,
     RFMetricName,
@@ -40,6 +48,7 @@ _RF_OPTION = typer.Option(
     "--rf",
     help="Repeatable RF metric selector: y|z|s|zin|zout",
 )
+_SOLVER_CONFIG_SNAPSHOT_STATE: dict[str, dict[str, object] | None] = {"value": None}
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +95,12 @@ def _execute_sweep(
     sweep_layout: SweepLayout,
     assemble_point: AssemblePointFn,
 ) -> SweepResult:
-    return run_sweep(frequencies_hz, sweep_layout, assemble_point)
+    return _execute_sweep_with_repro_capture(
+        frequencies_hz,
+        sweep_layout,
+        assemble_point,
+        rf_request=None,
+    )
 
 
 def _execute_sweep_with_rf(
@@ -98,12 +112,44 @@ def _execute_sweep_with_rf(
 ) -> SweepResult:
     if rf_request is None:
         return _execute_sweep(frequencies_hz, sweep_layout, assemble_point)
-    return run_sweep(
+    return _execute_sweep_with_repro_capture(
         frequencies_hz,
         sweep_layout,
         assemble_point,
         rf_request=rf_request,
     )
+
+
+def _execute_sweep_with_repro_capture(
+    frequencies_hz: Sequence[float] | NDArray[np.float64],
+    sweep_layout: SweepLayout,
+    assemble_point: AssemblePointFn,
+    *,
+    rf_request: SweepRFRequest | None,
+) -> SweepResult:
+    traces: list[tuple[AttemptTraceRecord, ...]] = []
+    conversion_run_config = FallbackRunConfig(enable_gmin=False)
+
+    def mna_solver(A: SparseComplexMatrix, b: NDArray[np.complex128]) -> SolveResult:
+        result = solve_linear_system(A, b, node_voltage_count=sweep_layout.n_nodes)
+        traces.append(result.attempt_trace)
+        return result
+
+    def conversion_solver(A: SparseComplexMatrix, b: NDArray[np.complex128]) -> SolveResult:
+        result = solve_linear_system(A, b, run_config=conversion_run_config)
+        traces.append(result.attempt_trace)
+        return result
+
+    result = run_sweep(
+        frequencies_hz,
+        sweep_layout,
+        assemble_point,
+        solve_point=mna_solver,
+        conversion_solve_point=conversion_solver,
+        rf_request=rf_request,
+    )
+    _set_last_solver_config_snapshot(build_solver_config_snapshot(attempt_traces=traces))
+    return result
 
 
 @app.command()
@@ -135,6 +181,7 @@ def run(
         raise typer.BadParameter("Only AC analysis is supported in v4.")
 
     try:
+        _reset_last_solver_config_snapshot()
         bundle = _load_design_bundle(design)
         preflight_diagnostics = tuple(sort_diagnostics(_execute_preflight(bundle.preflight_input)))
         _print_preflight_diagnostics(preflight_diagnostics)
@@ -172,7 +219,10 @@ def run(
             "frequencies_hz": [float(value) for value in frequencies.tolist()],
         },
         resolved_params_payload={},
-        solver_config_snapshot={"analysis": analysis},
+        solver_config_snapshot={
+            **_consume_last_solver_config_snapshot(),
+            "analysis": analysis,
+        },
         frequency_grid_metadata={"n_points": sweep_result.n_points},
     )
     run_payload = attach_manifest_to_run_payload(sweep_result, manifest)
@@ -180,6 +230,21 @@ def run(
     _print_sweep_diagnostics(run_payload.run_payload)
     _print_rf_lines(run_payload.run_payload)
     raise typer.Exit(code=_derive_run_exit_code(run_payload.run_payload.status))
+
+
+def _reset_last_solver_config_snapshot() -> None:
+    _SOLVER_CONFIG_SNAPSHOT_STATE["value"] = None
+
+
+def _set_last_solver_config_snapshot(snapshot: Mapping[str, object]) -> None:
+    _SOLVER_CONFIG_SNAPSHOT_STATE["value"] = dict(snapshot)
+
+
+def _consume_last_solver_config_snapshot() -> dict[str, object]:
+    snapshot = _SOLVER_CONFIG_SNAPSHOT_STATE["value"]
+    if snapshot is None:
+        return dict(build_solver_config_snapshot())
+    return dict(snapshot)
 
 
 def _resolve_rf_request(

@@ -6,7 +6,9 @@ import numpy as np
 import pytest
 from scipy.sparse import csc_matrix  # type: ignore[import-untyped]
 
+import rfmna.sweep_engine.run as sweep_run_module
 from rfmna.rf_metrics import PortBoundary
+from rfmna.solver import FallbackRunConfig, SolveResult, solve_linear_system
 from rfmna.sweep_engine import SweepLayout, SweepRFRequest, run_sweep
 
 pytestmark = pytest.mark.unit
@@ -195,3 +197,70 @@ def test_rf_payload_ordering_and_values_are_deterministic_under_request_permutat
         assert tuple(_diag_json(point) for point in left.diagnostics_by_point) == tuple(
             _diag_json(point) for point in right.diagnostics_by_point
         )
+
+
+def test_default_solver_paths_propagate_node_count_and_disable_conversion_gmin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    layout = SweepLayout(n_nodes=1, n_aux=0)
+    request = SweepRFRequest(
+        ports=(PortBoundary(port_id="P1", p_plus_index=0, p_minus_index=None),),
+        metrics=("y", "z", "s", "zin", "zout"),
+    )
+    calls: list[dict[str, object]] = []
+    real_solve = solve_linear_system
+
+    def spy_solve(matrix: object, rhs: np.ndarray, **kwargs: object) -> SolveResult:
+        calls.append(dict(kwargs))
+        return real_solve(matrix, rhs, **kwargs)
+
+    monkeypatch.setattr(sweep_run_module, "solve_linear_system", spy_solve)
+
+    def assemble(_: int, __: float) -> tuple[csc_matrix, np.ndarray]:
+        return (
+            csc_matrix(np.asarray([[0.0 + 0.0j]], dtype=np.complex128)),
+            np.asarray([0.0 + 0.0j], dtype=np.complex128),
+        )
+
+    result = run_sweep(frequencies, layout, assemble, rf_request=request)
+    assert list(result.status.astype(str)) == ["pass"]
+    assert result.rf_payloads is not None
+    assert calls
+
+    mna_calls = [call for call in calls if "node_voltage_count" in call]
+    conversion_calls = [call for call in calls if "run_config" in call]
+    assert mna_calls
+    assert all(call.get("node_voltage_count") == layout.n_nodes for call in mna_calls)
+    assert conversion_calls
+    assert all(isinstance(call["run_config"], FallbackRunConfig) for call in conversion_calls)
+    assert all(call["run_config"].enable_gmin is False for call in conversion_calls)
+
+
+def test_custom_mna_solve_point_does_not_override_conversion_no_gmin_policy() -> None:
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    layout = SweepLayout(n_nodes=1, n_aux=0)
+    request = SweepRFRequest(
+        ports=(PortBoundary(port_id="P1", p_plus_index=0, p_minus_index=None),),
+        metrics=("s",),
+    )
+
+    def assemble(_: int, __: float) -> tuple[csc_matrix, np.ndarray]:
+        return (
+            csc_matrix(np.asarray([[-0.02 + 0.0j]], dtype=np.complex128)),
+            np.asarray([0.0 + 0.0j], dtype=np.complex128),
+        )
+
+    def solve_point(matrix: object, rhs: np.ndarray) -> SolveResult:
+        return solve_linear_system(matrix, rhs, node_voltage_count=1)
+
+    result = run_sweep(frequencies, layout, assemble, solve_point=solve_point, rf_request=request)
+    assert result.rf_payloads is not None
+    s_payload = result.rf_payloads.get("s")
+    assert s_payload is not None
+    assert list(s_payload.status.astype(str)) == ["fail"]
+    assert np.isnan(s_payload.s[0].real).all()
+    assert np.isnan(s_payload.s[0].imag).all()
+    assert [diag.code for diag in s_payload.diagnostics_by_point[0]] == [
+        "E_NUM_S_CONVERSION_SINGULAR"
+    ]

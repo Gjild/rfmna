@@ -154,7 +154,7 @@ def test_permutation_equivalent_inputs_remain_tolerance_stable_under_alt_scaling
 
 def test_sweep_fail_sentinel_policy_preserved_when_backend_controls_are_exercised() -> None:
     freq = np.asarray([1.0, 2.0], dtype=np.float64)
-    layout = SweepLayout(n_nodes=7, n_aux=0)
+    layout = SweepLayout(n_nodes=6, n_aux=1)
 
     def assemble_point(index: int, frequency_hz: float) -> tuple[csr_matrix, np.ndarray]:
         del frequency_hz
@@ -169,6 +169,8 @@ def test_sweep_fail_sentinel_policy_preserved_when_backend_controls_are_exercise
     fail_index = 1
     assert math.isnan(result.V_nodes[fail_index, 0].real)
     assert math.isnan(result.V_nodes[fail_index, 0].imag)
+    assert math.isnan(result.I_aux[fail_index, 0].real)
+    assert math.isnan(result.I_aux[fail_index, 0].imag)
     assert math.isnan(result.res_l2[fail_index])
     assert math.isnan(result.res_linf[fail_index])
     assert math.isnan(result.res_rel[fail_index])

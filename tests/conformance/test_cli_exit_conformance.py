@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 import numpy as np
 import pytest
+from scipy.sparse import csc_matrix  # type: ignore[import-untyped]
 from typer.testing import CliRunner
 
 from rfmna.cli import main as cli_main
@@ -131,3 +132,34 @@ def test_unexpected_exceptions_map_to_contract_exit_code(monkeypatch: pytest.Mon
 
     assert check_result.exit_code == EXIT_FAIL
     assert run_result.exit_code == EXIT_FAIL
+
+
+def test_run_exit_semantics_remain_intact_when_fallback_controls_are_exercised(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preflight_input = PreflightInput(nodes=("0", "n1"), reference_node="0")
+
+    def assemble_point(index: int, frequency_hz: float) -> tuple[object, np.ndarray]:
+        del frequency_hz
+        if index == 1:
+            raise RuntimeError("planned assembly failure")
+        return (
+            csc_matrix(np.asarray([[0.0 + 0.0j]], dtype=np.complex128)),
+            np.asarray([0.0 + 0.0j], dtype=np.complex128),
+        )
+
+    bundle = cli_main.CliDesignBundle(
+        preflight_input=preflight_input,
+        frequencies_hz=(1.0, 2.0),
+        sweep_layout=SweepLayout(n_nodes=1, n_aux=0),
+        assemble_point=assemble_point,
+    )
+    monkeypatch.setattr(cli_main, "_load_design_bundle", lambda design: bundle)
+    monkeypatch.setattr(cli_main, "_execute_preflight", lambda _: ())
+
+    result = runner.invoke(cli_main.app, ["run", "d.net", "--analysis", "ac"])
+    assert result.exit_code == EXIT_FAIL
+    assert "POINT index=0" in result.stdout
+    assert "POINT index=1" in result.stdout
+    assert "status=pass" in result.stdout
+    assert "status=fail" in result.stdout

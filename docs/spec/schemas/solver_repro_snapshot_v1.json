@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "docs/spec/schemas/solver_repro_snapshot_v1.json",
+  "title": "SolverReproSnapshotV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "retry_controls",
+    "conversion_math_controls",
+    "attempt_trace_summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "solver_repro_snapshot_v1"
+    },
+    "analysis": {
+      "type": "string",
+      "minLength": 1
+    },
+    "retry_controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enable_alt_pivot",
+        "enable_scaling",
+        "enable_gmin",
+        "fallback_order",
+        "gmin_values",
+        "scaling_enabled_by_default",
+        "thresholds_source"
+      ],
+      "properties": {
+        "enable_alt_pivot": {
+          "type": "boolean"
+        },
+        "enable_scaling": {
+          "type": "boolean"
+        },
+        "enable_gmin": {
+          "type": "boolean"
+        },
+        "fallback_order": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "baseline",
+              "alt_pivot",
+              "scaling",
+              "gmin",
+              "final_fail"
+            ]
+          }
+        },
+        "gmin_values": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "scaling_enabled_by_default": {
+          "type": "boolean"
+        },
+        "thresholds_source": {
+          "type": "string",
+          "enum": [
+            "default_artifact",
+            "override_artifact"
+          ]
+        }
+      }
+    },
+    "conversion_math_controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enable_gmin_regularization"
+      ],
+      "properties": {
+        "enable_gmin_regularization": {
+          "const": false
+        }
+      }
+    },
+    "attempt_trace_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_solve_calls",
+        "total_attempt_records",
+        "max_attempts_per_call",
+        "calls_with_retry",
+        "calls_with_fail",
+        "calls_with_stage_skips",
+        "stage_run_counts",
+        "stage_skip_counts",
+        "skip_reason_counts"
+      ],
+      "properties": {
+        "total_solve_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_attempt_records": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_attempts_per_call": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "calls_with_retry": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "calls_with_fail": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "calls_with_stage_skips": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stage_run_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "baseline",
+            "alt_pivot",
+            "scaling",
+            "gmin",
+            "final_fail"
+          ],
+          "properties": {
+            "baseline": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "alt_pivot": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "scaling": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "gmin": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "final_fail": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "stage_skip_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "baseline",
+            "alt_pivot",
+            "scaling",
+            "gmin",
+            "final_fail"
+          ],
+          "properties": {
+            "baseline": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "alt_pivot": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "scaling": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "gmin": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "final_fail": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "skip_reason_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,12 +1,23 @@
 {
   "schema_version": 1,
-  "declared_frozen_ids": "none",
+  "declared_frozen_ids": [2, 3, 9, 11],
   "evidence": {
-    "semver_bump": null,
-    "decision_records": [],
-    "conformance_updates": [],
-    "migration_notes": [],
-    "reproducibility_impact_statement_path": null
+    "semver_bump": {
+      "from_version": "0.1.0",
+      "to_version": "0.1.1"
+    },
+    "decision_records": [
+      "docs/spec/decision_records/2026-02-28-p2-02-fallback-ladder-rf-hardening.md"
+    ],
+    "conformance_updates": [
+      "tests/conformance/test_cli_exit_conformance.py",
+      "tests/conformance/test_rf_warning_propagation_conformance.py",
+      "tests/conformance/test_solver_repro_snapshot_conformance.py"
+    ],
+    "migration_notes": [
+      "docs/spec/migration_notes/2026-02-28-v0-1-1-p2-02-fallback-ladder-rf-hardening.md"
+    ],
+    "reproducibility_impact_statement_path": "docs/dev/reproducibility_impact_p2_02.md"
   },
-  "notes": "Update this artifact per change. Use \"none\" only when touched-path detection resolves to no frozen IDs."
+  "notes": "P2-02 hardening touches frozen-id mapped paths for RF extraction/conversion behavior, fail sentinel surfaces, and run CLI payload wiring while preserving run exit semantics. Frozen artifact #10 (canonical API data shapes/ordering) was explicitly assessed as non-impacted because no canonical API shape/order contract files were changed (`src/rfmna/sweep_engine/types.py`, `src/rfmna/viz_io/rf_export.py`, `src/rfmna/viz_io/manifest.py`). Governance evidence provided per Phase 2 policy."
 }

@@ -225,3 +225,48 @@ def test_run_path_emits_manifest_every_run_invocation(monkeypatch: pytest.Monkey
     assert first.exit_code == 0
     assert second.exit_code == 0
     assert manifest_calls == {"build": 2, "attach": 2}
+
+
+def test_run_path_emits_solver_snapshot_with_explicit_default_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preflight_input = PreflightInput(nodes=("0",), reference_node="0")
+
+    def assemble_point(index: int, frequency_hz: float) -> tuple[object, NDArray[np.complex128]]:
+        del index, frequency_hz
+        raise AssertionError("assemble_point should not be used in this test")
+
+    bundle = cli_main.CliDesignBundle(
+        preflight_input=preflight_input,
+        frequencies_hz=(1.0,),
+        sweep_layout=SweepLayout(n_nodes=1, n_aux=0),
+        assemble_point=assemble_point,
+    )
+    monkeypatch.setattr(cli_main, "_load_design_bundle", lambda design: bundle)
+    monkeypatch.setattr(cli_main, "_execute_preflight", lambda _: ())
+    monkeypatch.setattr(
+        cli_main,
+        "_execute_sweep",
+        lambda freq, layout, assemble: _dummy_sweep_result(("pass",)),
+    )
+
+    captured: dict[str, object] = {}
+
+    def _build_manifest(**kwargs: object) -> RunManifest:
+        captured["solver_config_snapshot"] = kwargs["solver_config_snapshot"]
+        return _build_minimal_manifest(
+            solver_config_snapshot=kwargs["solver_config_snapshot"]  # type: ignore[arg-type]
+        )
+
+    monkeypatch.setattr(cli_main, "build_manifest", _build_manifest)
+
+    result = runner.invoke(cli_main.app, ["run", "design.net", "--analysis", "ac"])
+    assert result.exit_code == 0
+
+    snapshot = captured["solver_config_snapshot"]
+    assert isinstance(snapshot, dict)
+    assert snapshot["schema"] == "solver_repro_snapshot_v1"
+    assert snapshot["analysis"] == "ac"
+    assert snapshot["conversion_math_controls"] == {"enable_gmin_regularization": False}
+    assert snapshot["attempt_trace_summary"]["total_solve_calls"] == 0
+    assert snapshot["attempt_trace_summary"]["skip_reason_counts"] == {}

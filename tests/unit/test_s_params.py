@@ -17,6 +17,12 @@ from rfmna.diagnostics import (
 from rfmna.rf_metrics import convert_y_to_s, convert_z_to_s
 from rfmna.rf_metrics.y_params import YParameterResult
 from rfmna.rf_metrics.z_params import ZParameterResult
+from rfmna.solver import (
+    FallbackRunConfig,
+    SolveResult,
+    load_solver_threshold_config,
+    solve_linear_system,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -270,3 +276,100 @@ def test_upstream_diagnostics_are_retained_for_failed_input_points() -> None:
     assert np.isnan(result.s[0].real).all()
     assert np.isnan(result.s[0].imag).all()
     assert result.diagnostics_by_point[0][0].code == "E_NUM_SOLVE_FAILED"
+
+
+def test_default_conversion_solver_disables_gmin_regularization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    z_matrix = np.asarray([[[75.0 + 0.0j]]], dtype=np.complex128)
+    z_result = _z_result(frequencies_hz=frequencies, port_ids=("P1",), z=z_matrix)
+    calls: list[dict[str, object]] = []
+    real_solve = solve_linear_system
+
+    def spy_solve(matrix: object, rhs: np.ndarray, **kwargs: object) -> SolveResult:
+        calls.append(dict(kwargs))
+        return real_solve(matrix, rhs, **kwargs)
+
+    monkeypatch.setattr(s_params_module, "solve_linear_system", spy_solve)
+
+    result = convert_z_to_s(z_result, z0_ohm=50.0)
+    assert list(result.status.astype(str)) == ["pass"]
+    assert calls
+    assert all("run_config" in call for call in calls)
+    assert all(isinstance(call["run_config"], FallbackRunConfig) for call in calls)
+    assert all(call["run_config"].enable_gmin is False for call in calls)
+    assert all(call.get("node_voltage_count") is None for call in calls)
+
+
+def test_conversion_solver_warnings_are_propagated_with_context() -> None:
+    thresholds = load_solver_threshold_config()
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    z_matrix = np.asarray([[[75.0 + 0.0j]]], dtype=np.complex128)
+    z_result = _z_result(frequencies_hz=frequencies, port_ids=("P1",), z=z_matrix)
+
+    class _ConstEstimator:
+        def estimate(self, A: object) -> float | None:
+            del A
+            return None
+
+    def solve_point(matrix: object, rhs: np.ndarray) -> SolveResult:
+        return solve_linear_system(
+            matrix,
+            rhs,
+            run_config=FallbackRunConfig(enable_gmin=False),
+            condition_estimator=_ConstEstimator(),
+        )
+
+    result = convert_z_to_s(z_result, z0_ohm=50.0, solve_point=solve_point)
+    point_diags = result.diagnostics_by_point[0]
+    warning_codes = [diag.code for diag in point_diags if diag.severity == "warning"]
+    assert list(result.status.astype(str)) == ["pass"]
+    assert warning_codes == [thresholds.conditioning.unavailable_warning_code]
+    assert point_diags[0].frequency_index == 0
+    assert point_diags[0].solver_stage == "solve"
+
+
+def test_convert_y_to_s_warnings_are_propagated_with_context() -> None:
+    thresholds = load_solver_threshold_config()
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    y_matrix = np.asarray([[[0.02 + 0.0j]]], dtype=np.complex128)
+    y_result = _y_result(frequencies_hz=frequencies, port_ids=("P1",), y=y_matrix)
+
+    class _ConstEstimator:
+        def estimate(self, A: object) -> float | None:
+            del A
+            return None
+
+    def solve_point(matrix: object, rhs: np.ndarray) -> SolveResult:
+        return solve_linear_system(
+            matrix,
+            rhs,
+            run_config=FallbackRunConfig(enable_gmin=False),
+            condition_estimator=_ConstEstimator(),
+        )
+
+    result = convert_y_to_s(y_result, z0_ohm=50.0, solve_point=solve_point)
+    point_diags = result.diagnostics_by_point[0]
+    warning_codes = [diag.code for diag in point_diags if diag.severity == "warning"]
+    assert list(result.status.astype(str)) == ["pass"]
+    assert warning_codes == [thresholds.conditioning.unavailable_warning_code]
+    assert point_diags[0].frequency_index == 0
+    assert point_diags[0].solver_stage == "solve"
+
+
+def test_conversion_rejects_gmin_regularization_from_custom_solver() -> None:
+    frequencies = np.asarray([1.0], dtype=np.float64)
+    z_matrix = np.asarray([[[-50.0 + 0.0j]]], dtype=np.complex128)
+    z_result = _z_result(frequencies_hz=frequencies, port_ids=("P1",), z=z_matrix)
+
+    def solve_point(matrix: object, rhs: np.ndarray) -> SolveResult:
+        return solve_linear_system(matrix, rhs, node_voltage_count=1)
+
+    result = convert_z_to_s(z_result, z0_ohm=50.0, solve_point=solve_point)
+    assert list(result.status.astype(str)) == ["fail"]
+    assert np.isnan(result.s[0].real).all()
+    assert np.isnan(result.s[0].imag).all()
+    assert [diag.code for diag in result.diagnostics_by_point[0]] == ["E_NUM_S_CONVERSION_SINGULAR"]
+    assert result.diagnostics_by_point[0][0].witness is not None
+    assert "gmin_regularization_forbidden" in str(result.diagnostics_by_point[0][0].witness)

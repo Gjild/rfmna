@@ -111,7 +111,7 @@ Evidence:
 - `tests/unit/test_sweep_engine_rf_payloads.py::test_rf_payloads_align_indices_and_apply_sentinel_policy_for_failed_points`
 - `tests/unit/test_y_params.py::test_failed_point_is_retained_with_full_matrix_nan_sentinel_and_frequency_alignment`
 - `tests/unit/test_z_params.py::test_failed_point_is_retained_with_matrix_nan_sentinel_and_diagnostic`
-- `tests/unit/test_impedance.py::test_open_fixture_emits_fail_sentinel_and_explicit_singular_diagnostic`
+- `tests/unit/test_impedance.py::test_open_fixture_uses_gmin_retry_and_retains_point_ordering`
 
 ## 5) Determinism, Failure Modes, and Limits
 
