@@ -2,20 +2,11 @@
   "schema_version": 1,
   "declared_frozen_ids": "none",
   "evidence": {
-    "semver_bump": {
-      "from_version": "0.1.1",
-      "to_version": "0.1.2"
-    },
-    "decision_records": [
-      "docs/spec/decision_records/2026-02-28-p2-06-regression-golden-tolerance-baseline-v0-1-2.md"
-    ],
-    "conformance_updates": [
-      "tests/conformance/test_phase2_governance_conformance.py"
-    ],
-    "migration_notes": [
-      "docs/spec/migration_notes/2026-02-28-v0-1-2-p2-06-regression-golden-tolerance-baseline.md"
-    ],
-    "reproducibility_impact_statement_path": "docs/dev/reproducibility_impact_p2_06.md"
+    "semver_bump": null,
+    "decision_records": [],
+    "conformance_updates": [],
+    "migration_notes": [],
+    "reproducibility_impact_statement_path": null
   },
-  "notes": "P2-06 introduces `docs/dev/tolerances/regression_baseline_v1.yaml` as a normative_gating merge-gating tolerance source used by regression pass/fail assertions. No frozen IDs are touched, but full evidence is declared to satisfy governance policy for touched normative_gating tolerance sources."
+  "notes": "P2-07 adds deterministic Hypothesis-backed property tests under tests/property and a deterministic property-lane profile configuration. Scope is test/config only; no frozen artifacts are touched."
 }
