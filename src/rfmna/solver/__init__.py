@@ -1,0 +1,51 @@
+from .backend import (
+    BackendMetadata,
+    BackendNotes,
+    BackendSolveOptions,
+    BackendSolveResult,
+    SciPySparseBackend,
+    SolverBackend,
+)
+from .fallback import (
+    DEFAULT_THRESHOLDS_PATH,
+    AttemptTraceRecord,
+    FallbackRunConfig,
+    SolverConfigError,
+    SolveWarning,
+    load_solver_threshold_config,
+)
+from .solve import (
+    DEGRADED_MAX,
+    EPSILON,
+    PASS_MAX,
+    ResidualMetrics,
+    SolveResult,
+    SolveStatus,
+    classify_status,
+    compute_residual_metrics,
+    solve_linear_system,
+)
+
+__all__ = [
+    "AttemptTraceRecord",
+    "BackendMetadata",
+    "BackendNotes",
+    "BackendSolveOptions",
+    "BackendSolveResult",
+    "DEFAULT_THRESHOLDS_PATH",
+    "DEGRADED_MAX",
+    "EPSILON",
+    "FallbackRunConfig",
+    "PASS_MAX",
+    "ResidualMetrics",
+    "SolveWarning",
+    "SciPySparseBackend",
+    "SolverConfigError",
+    "SolveResult",
+    "SolveStatus",
+    "SolverBackend",
+    "classify_status",
+    "compute_residual_metrics",
+    "load_solver_threshold_config",
+    "solve_linear_system",
+]

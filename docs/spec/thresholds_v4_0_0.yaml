@@ -1,0 +1,91 @@
+# docs/spec/thresholds_v4_0_0.yaml
+# Normative thresholds and defaults for rfmna v4.0.0
+# Status: frozen artifact (no silent changes)
+
+version: "4.0.0"
+status: "normative"
+
+numeric_contract:
+  dtype:
+    real: "float64"
+    complex: "complex128"
+
+  residual:
+    relative_epsilon: 1.0e-30
+    status_bands:
+      # pass:    r_rel <= pass_max
+      # degraded: pass_max < r_rel <= degraded_max
+      # fail:    r_rel > degraded_max
+      pass_max: 1.0e-9
+      degraded_max: 1.0e-6
+      fail_min_exclusive: 1.0e-6
+
+  condition_indicator:
+    estimator:
+      id: "lu_rcond_proxy_v1"
+      description: "LU-based reciprocal condition proxy (backend-dependent)"
+      unavailable_policy:
+        cond_ind: "NaN"
+        warning_code: "W_NUM_COND_UNAVAILABLE"
+
+    # cond_ind is reciprocal-condition-like: smaller is worse.
+    # Bands are evaluated in this order:
+    # 1) if cond_ind is NaN -> emit W_NUM_COND_UNAVAILABLE
+    # 2) if cond_ind <= fail_max -> numeric failure classification path
+    # 3) else if cond_ind <= warn_max -> emit W_NUM_ILL_CONDITIONED
+    # 4) else -> no conditioning warning
+    bands:
+      warn_max: 1.0e-10
+      fail_max: 1.0e-14
+      warning_code: "W_NUM_ILL_CONDITIONED"
+
+solver_defaults:
+  scaling:
+    enabled_by_default: false
+    mode: "none"
+
+  gmin_ladder:
+    # Siemens (S), strict order, resets per sweep point.
+    # Frozen sequence from v4 contract.
+    unit: "S"
+    reset_per_point: true
+    values: [0.0, 1.0e-15, 1.0e-12, 1.0e-9, 1.0e-6]
+
+  fallback_ladder:
+    # Normative retry order; do not reorder without semver + decision record.
+    order:
+      - "baseline"
+      - "alt_permutation_or_pivot"
+      - "scaling_enabled_retry"
+      - "gmin_ladder_retry"
+      - "final_fail_bundle"
+
+rf_parameter_conversion:
+  zblock:
+    singular_error_code: "E_NUM_ZBLOCK_SINGULAR"
+    ill_conditioned_error_code: "E_NUM_ZBLOCK_ILL_CONDITIONED"
+  s_conversion:
+    singular_error_code: "E_NUM_S_CONVERSION_SINGULAR"
+
+diagnostic_policy:
+  warnings_do_not_modify_numerical_results: true
+  required_nan_policy:
+    failed_point:
+      complex_arrays: "nan+1j*nan"
+      real_arrays: "nan"
+      status: "fail"
+      diagnostics_entry_required: true
+
+metadata:
+  frozen_artifact: true
+  source_docs:
+    - "docs/spec/v4_contract.md"
+    - "docs/spec/diagnostics_taxonomy_v4_0_0.md"
+    - "docs/spec/frozen_artifacts_v4_0_0.md"
+  change_control:
+    requires:
+      - "semantic_version_bump"
+      - "decision_record"
+      - "conformance_update"
+      - "migration_note"
+      - "reproducibility_impact_statement"

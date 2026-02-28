@@ -1,0 +1,27 @@
+{
+  "fixture_id": "RF_PAYLOAD_SENTINEL_ORDERING_V1",
+  "frequencies_hz": [1.0, 2.0, 3.0],
+  "layout": {
+    "n_nodes": 2,
+    "n_aux": 0
+  },
+  "ports": [
+    {
+      "port_id": "P2",
+      "p_plus_index": 1,
+      "p_minus_index": null
+    },
+    {
+      "port_id": "P1",
+      "p_plus_index": 0,
+      "p_minus_index": null
+    }
+  ],
+  "metrics_permutations": [
+    ["zout", "s", "y", "zin", "z"],
+    ["zin", "z", "y", "s", "zout"]
+  ],
+  "expected_canonical_metric_names": ["y", "z", "s", "zin", "zout"],
+  "fail_assemble_index": 1,
+  "expected_status": ["pass", "fail", "pass"]
+}

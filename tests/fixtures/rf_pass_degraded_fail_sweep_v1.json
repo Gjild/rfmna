@@ -1,0 +1,10 @@
+{
+  "fixture_id": "RF_PASS_DEGRADED_FAIL_SWEEP_V1",
+  "frequencies_hz": [1.0, 2.0, 3.0],
+  "layout": {
+    "n_nodes": 1,
+    "n_aux": 1
+  },
+  "point_statuses": ["pass", "fail", "degraded"],
+  "fail_point_index": 1
+}

@@ -1,0 +1,73 @@
+name: ci
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      CI: "true"
+      PYTHONHASHSEED: "0"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.14
+
+      - name: Sync
+        run: uv sync --all-groups
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run mypy src
+
+      - name: Tests (acceptance baseline)
+        run: uv run pytest -q
+
+      - name: Tests (unit + conformance)
+        run: uv run pytest -m "unit or conformance"
+
+      - name: Import smoke
+        run: uv run python -c "import rfmna"
+
+      - name: CLI smoke
+        run: uv run rfmna --help
+
+      - name: Phase 1 gate status (informational)
+        if: ${{ always() }}
+        run: |
+          echo "task=P1-00"
+          echo "checklist=docs/dev/phase1_gate.md"
+          if test -f docs/dev/phase1_gate.md; then
+            echo "checklist_status=present"
+            sed -n '1,220p' docs/dev/phase1_gate.md
+          else
+            echo "checklist_status=missing"
+          fi
+          {
+            echo "task=P1-00"
+            echo "checklist=docs/dev/phase1_gate.md"
+            if test -f docs/dev/phase1_gate.md; then
+              echo "checklist_status=present"
+            else
+              echo "checklist_status=missing"
+            fi
+          } > phase1_gate_status.txt
+
+      - name: Upload Phase 1 gate status (informational)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-gate-status
+          path: |
+            phase1_gate_status.txt
+            docs/dev/phase1_gate.md
+          if-no-files-found: warn

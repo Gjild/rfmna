@@ -4,26 +4,28 @@ version = "0.1.0"
 description = "Personal RF MNA solver"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
+# These are ALL installed via 'uv add'. ALL dependencies are publicly available.
 dependencies = [
-  "numpy>=2.3.4",
-  "scipy>=1.16.1",
-  "pandas>=2.3.3",
-  "matplotlib>=3.10.5",
-  "pydantic>=2.8",
   "typer>=0.21.1",
+  "pandas>=3.0.0",
+  "matplotlib>=3.10.8",
+  "numpy>=2.4.2",
+  "scipy>=1.17.0",
+  "pydantic>=2.12.5",
 ]
 
 [dependency-groups]
 dev = [
   "pytest>=8.3",
   "hypothesis>=6.112",
-  "ruff>=0.6",
+  "ruff==0.15.4",
   "mypy>=1.11",
   "pytest-cov>=5.0",
+  "pre-commit>=4.5.1",
 ]
 
 [project.scripts]
-rfmna = "rfmna.cli.main:app"
+rfmna = "rfmna.cli.main:main"
 
 [build-system]
 requires = ["hatchling"]
