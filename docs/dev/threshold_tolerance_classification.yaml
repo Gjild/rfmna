@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "path": "docs/spec/thresholds_v4_0_0.yaml",
+      "classification": "normative_gating",
+      "notes": "Frozen artifact #5 source; merge-blocking without full frozen-evidence set."
+    },
+    {
+      "path": "docs/dev/tolerances/calibration_seed_v1.yaml",
+      "classification": "calibration_only",
+      "notes": "Phase 2 bootstrap calibration scratchpad; not a merge-gating threshold source."
+    }
+  ],
+  "merge_gating_tolerance_sources": [
+    "docs/spec/thresholds_v4_0_0.yaml"
+  ],
+  "promotion_policy_note": "A calibration_only source may be promoted only after decision-record approval and explicit reclassification to normative_gating in this table with conformance evidence."
+}

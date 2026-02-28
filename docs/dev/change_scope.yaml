@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "declared_frozen_ids": "none",
+  "evidence": {
+    "semver_bump": null,
+    "decision_records": [],
+    "conformance_updates": [],
+    "migration_notes": [],
+    "reproducibility_impact_statement_path": null
+  },
+  "notes": "Update this artifact per change. Use \"none\" only when touched-path detection resolves to no frozen IDs."
+}

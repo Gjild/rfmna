@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "frozen_artifact_rules": [
+    {
+      "id": 1,
+      "label": "Canonical element stamp equations",
+      "detection": [
+        {"path_glob": "docs/spec/stamp_appendix_v4_0_0.md"},
+        {"path_glob": "src/rfmna/elements/passive.py"},
+        {"path_glob": "src/rfmna/elements/sources.py"},
+        {"path_glob": "src/rfmna/elements/controlled.py"},
+        {"path_glob": "src/rfmna/elements/inductor.py"}
+      ]
+    },
+    {
+      "id": 2,
+      "label": "2-port Y/Z block equations and stamping policy",
+      "detection": [
+        {"path_glob": "docs/spec/stamp_appendix_v4_0_0.md"},
+        {"path_glob": "src/rfmna/rf_metrics/boundary.py"},
+        {"path_glob": "src/rfmna/rf_metrics/y_params.py"},
+        {"path_glob": "src/rfmna/rf_metrics/z_params.py"}
+      ]
+    },
+    {
+      "id": 3,
+      "label": "Port voltage/current and wave conventions",
+      "detection": [
+        {"path_glob": "docs/spec/port_wave_conventions_v4_0_0.md"},
+        {"path_glob": "src/rfmna/rf_metrics/boundary.py"},
+        {"path_glob": "src/rfmna/rf_metrics/s_params.py"},
+        {"path_glob": "src/rfmna/rf_metrics/impedance.py"}
+      ]
+    },
+    {
+      "id": 4,
+      "label": "Residual formula and condition-indicator definition",
+      "detection": [
+        {"path_glob": "docs/spec/v4_contract.md"},
+        {"path_glob": "docs/spec/thresholds_v4_0_0.yaml"},
+        {"path_glob": "src/rfmna/solver/solve.py"}
+      ]
+    },
+    {
+      "id": 5,
+      "label": "Threshold table values and status bands",
+      "detection": [
+        {"path_glob": "docs/spec/thresholds_v4_0_0.yaml"}
+      ]
+    },
+    {
+      "id": 6,
+      "label": "Retry ladder order/defaults",
+      "detection": [
+        {"path_glob": "docs/spec/v4_contract.md"},
+        {"path_glob": "docs/spec/thresholds_v4_0_0.yaml"},
+        {"path_glob": "src/rfmna/solver/fallback.py"},
+        {"path_glob": "src/rfmna/solver/backend.py"}
+      ]
+    },
+    {
+      "id": 7,
+      "label": "IR serialization/hash rules",
+      "detection": [
+        {"path_glob": "src/rfmna/ir/serialize.py"},
+        {"path_glob": "src/rfmna/ir/models.py"}
+      ]
+    },
+    {
+      "id": 8,
+      "label": "Frequency grammar and grid generation rules",
+      "detection": [
+        {"path_glob": "docs/spec/frequency_grid_and_sweep_rules_v4_0_0.md"},
+        {"path_glob": "src/rfmna/sweep_engine/frequency_grid.py"}
+      ]
+    },
+    {
+      "id": 9,
+      "label": "CLI exit semantics and partial-sweep behavior",
+      "detection": [
+        {"path_glob": "docs/spec/v4_contract.md"},
+        {"path_glob": "src/rfmna/cli/main.py"}
+      ]
+    },
+    {
+      "id": 10,
+      "label": "Canonical API data shapes and ordering",
+      "detection": [
+        {"path_glob": "src/rfmna/sweep_engine/types.py"},
+        {"path_glob": "src/rfmna/viz_io/rf_export.py"},
+        {"path_glob": "src/rfmna/viz_io/manifest.py"}
+      ]
+    },
+    {
+      "id": 11,
+      "label": "Fail-point sentinel policy",
+      "detection": [
+        {"path_glob": "src/rfmna/sweep_engine/run.py"},
+        {"path_glob": "src/rfmna/rf_metrics/y_params.py"},
+        {"path_glob": "src/rfmna/rf_metrics/z_params.py"},
+        {"path_glob": "src/rfmna/rf_metrics/s_params.py"},
+        {"path_glob": "src/rfmna/rf_metrics/impedance.py"}
+      ]
+    },
+    {
+      "id": 12,
+      "label": "Deterministic thread-control defaults",
+      "detection": [
+        {"path_glob": ".envrc"},
+        {
+          "path_glob": ".github/workflows/ci.yml",
+          "line_tokens_any": [
+            "PYTHONHASHSEED:",
+            "OPENBLAS_NUM_THREADS:",
+            "MKL_NUM_THREADS:",
+            "OMP_NUM_THREADS:",
+            "NUMEXPR_NUM_THREADS:"
+          ]
+        }
+      ]
+    }
+  ],
+  "frozen_threshold_status_band_sources": [
+    "docs/spec/thresholds_v4_0_0.yaml"
+  ],
+  "required_evidence_by_frozen_id": {
+    "1": [
+      "semver_bump",
+      "decision_records",
+      "conformance_updates",
+      "migration_notes",
+      "reproducibility_impact_statement_path"
+    ],
+    "2": [
+      "semver_bump",
+      "decision_records",
+      "conformance_updates",
+      "migration_notes",
+      "reproducibility_impact_statement_path"
+    ],
+    "3": [
+      "semver_bump",
+      "decision_records",
+      "conformance_updates",
+      "migration_notes",
+      "reproducibility_impact_statement_path"
+    ],
+    "4": [
+      "semver_bump",
+      "decision_records",
+      "conformance_updates",
+      "migration_notes",
+      "reproducibility_impact_statement_path"
+    ],
+    "5": [
+      "semver_bump",
+      "decision_records",
+      "conformance_updates",
+      "migration_notes",
+      "reproducibility_impact_statement_path"
+    ],
+    "6": [
+      "semver_bump",
+      "decision_records",
+      "conformance_updates",
+      "migration_notes",
+      "reproducibility_impact_statement_path"
+    ],
+    "7": [
+      "semver_bump",
+      "decision_records",
+      "conformance_updates",
+      "migration_notes",
+      "reproducibility_impact_statement_path"
+    ],
+    "8": [
+      "semver_bump",
+      "decision_records",
+      "conformance_updates",
+      "migration_notes",
+      "reproducibility_impact_statement_path"
+    ],
+    "9": [
+      "semver_bump",
+      "decision_records",
+      "conformance_updates",
+      "migration_notes",
+      "reproducibility_impact_statement_path"
+    ],
+    "10": [
+      "semver_bump",
+      "decision_records",
+      "conformance_updates",
+      "migration_notes",
+      "reproducibility_impact_statement_path"
+    ],
+    "11": [
+      "semver_bump",
+      "decision_records",
+      "conformance_updates",
+      "migration_notes",
+      "reproducibility_impact_statement_path"
+    ],
+    "12": [
+      "semver_bump",
+      "decision_records",
+      "conformance_updates",
+      "migration_notes",
+      "reproducibility_impact_statement_path"
+    ]
+  }
+}

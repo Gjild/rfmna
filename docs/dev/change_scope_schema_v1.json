@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "docs/dev/change_scope_schema_v1.json",
+  "title": "Phase2ChangeScope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "declared_frozen_ids", "evidence"],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "declared_frozen_ids": {
+      "oneOf": [
+        {"const": "none"},
+        {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "uniqueItems": true
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semver_bump",
+        "decision_records",
+        "conformance_updates",
+        "migration_notes",
+        "reproducibility_impact_statement_path"
+      ],
+      "properties": {
+        "semver_bump": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["from_version", "to_version"],
+              "properties": {
+                "from_version": {"type": "string", "minLength": 1},
+                "to_version": {"type": "string", "minLength": 1}
+              }
+            }
+          ]
+        },
+        "decision_records": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "conformance_updates": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "migration_notes": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "reproducibility_impact_statement_path": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "minLength": 1}
+          ]
+        }
+      }
+    },
+    "notes": {"type": "string"}
+  }
+}

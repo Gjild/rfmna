@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "fixture_id": "reg-smoke-resistor-y-v1",
+  "metric": "y11",
+  "expected": 0.02
+}

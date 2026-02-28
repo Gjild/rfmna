@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "status": "calibration_only",
+  "notes": "Seed calibration artifact. CI merge-gating checks must not consume this file."
+}

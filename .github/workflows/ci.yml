@@ -13,6 +13,8 @@ jobs:
       NUMEXPR_NUM_THREADS: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -29,11 +31,53 @@ jobs:
       - name: Type check
         run: uv run mypy src
 
+      - name: Resolve governance diff range
+        shell: bash
+        run: |
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            gov_base="${{ github.event.pull_request.base.sha }}"
+          else
+            gov_base="${{ github.event.before }}"
+          fi
+          if [ -z "$gov_base" ] || [ "$gov_base" = "$ZERO_SHA" ] || ! git rev-parse --verify --quiet "${gov_base}^{commit}" >/dev/null; then
+            if git rev-parse --verify --quiet "${{ github.sha }}^" >/dev/null; then
+              gov_base="$(git rev-parse "${{ github.sha }}^")"
+            else
+              gov_base="${{ github.sha }}"
+            fi
+          fi
+          echo "RFMNA_GOV_BASE=$gov_base" >> "$GITHUB_ENV"
+          echo "RFMNA_GOV_HEAD=${{ github.sha }}" >> "$GITHUB_ENV"
+
+      - name: Phase 2 governance sub-gate (blocking)
+        run: |
+          uv run python -m rfmna.governance.phase2_gate \
+            --sub-gate governance \
+            --base-ref "$RFMNA_GOV_BASE" \
+            --head-ref "$RFMNA_GOV_HEAD" \
+            --report-file phase2_governance_subgate_status.txt
+
+      - name: Phase 2 category bootstrap sub-gate (blocking)
+        run: |
+          uv run python -m rfmna.governance.phase2_gate \
+            --sub-gate category-bootstrap \
+            --report-file phase2_category_bootstrap_subgate_status.txt
+
       - name: Tests (acceptance baseline)
         run: uv run pytest -q
 
       - name: Tests (unit + conformance)
         run: uv run pytest -m "unit or conformance"
+
+      - name: Tests (cross_check collection guard)
+        run: uv run pytest -m cross_check --collect-only -q
+
+      - name: Tests (cross_check)
+        run: uv run pytest -m cross_check
+
+      - name: Tests (regression smoke selector)
+        run: uv run pytest tests/regression -m regression -q
 
       - name: Import smoke
         run: uv run python -c "import rfmna"
@@ -70,4 +114,37 @@ jobs:
           path: |
             phase1_gate_status.txt
             docs/dev/phase1_gate.md
+          if-no-files-found: warn
+
+      - name: Phase 2 gate status (informational)
+        if: ${{ always() }}
+        run: |
+          echo "task=P2-00"
+          echo "checklist=docs/dev/phase2_gate.md"
+          if test -f docs/dev/phase2_gate.md; then
+            echo "checklist_status=present"
+            sed -n '1,260p' docs/dev/phase2_gate.md
+          else
+            echo "checklist_status=missing"
+          fi
+          {
+            echo "task=P2-00"
+            echo "checklist=docs/dev/phase2_gate.md"
+            if test -f docs/dev/phase2_gate.md; then
+              echo "checklist_status=present"
+            else
+              echo "checklist_status=missing"
+            fi
+          } > phase2_gate_status.txt
+
+      - name: Upload Phase 2 gate status (informational)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase2-gate-status
+          path: |
+            phase2_gate_status.txt
+            phase2_governance_subgate_status.txt
+            phase2_category_bootstrap_subgate_status.txt
+            docs/dev/phase2_gate.md
           if-no-files-found: warn

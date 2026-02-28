@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tests/regression/schemas/resistor_y_smoke_v1.schema.json",
+  "title": "RegressionSmokeResistorYV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "fixture_id", "metric", "expected"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "fixture_id": {"type": "string", "const": "reg-smoke-resistor-y-v1"},
+    "metric": {"type": "string", "const": "y11"},
+    "expected": {"type": "number"}
+  }
+}
