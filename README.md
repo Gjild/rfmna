@@ -4,22 +4,25 @@ Deterministic RF Modified Nodal Analysis (MNA) solver under the v4 contract.
 
 ## Status
 
-This repository currently ships the **Phase 1 RF Utility** surface with unit and conformance coverage.
+This repository currently ships the **Phase 2 robustness** surface with
+`unit`, `conformance`, `property`, `regression`, and `cross_check` coverage.
 
 Implemented and test-covered surface:
 
-- Complex sparse unsymmetric AC sweep core
-- RF metric extraction utilities: `y`, `z`, `s`, `zin`, `zout`
-- Sweep-engine RF payload integration with deterministic ordering and fail-point sentinels
-- CLI commands `check` and `run`, including repeatable `run --rf y|z|s|zin|zout`
-- Canonical diagnostics sorting (including sweep/CLI via canonical-equivalent adapter) and
-  cataloged machine-mappable diagnostic codes
+- Complex sparse unsymmetric AC sweep core with fallback-control execution evidence
+- RF extraction paths (`y`, `z`, `s`, `zin`, `zout`) with deterministic warning propagation
+- Hardened `rfmna check` contract (`text` + canonical `json` schema mode)
+- Runtime diagnostics catalog closure with deterministic Track A/Track B governance guards
+- CI-enforced Phase 2 verification lanes for all required categories
 
 Evidence anchors:
 
-- `tests/conformance/test_sweep_fail_sentinel_conformance.py::test_fail_point_sentinel_policy_and_full_point_presence`
-- `tests/unit/test_sweep_engine_rf_composition_dependencies.py::test_rf_composition_matrix_rows_use_explicit_dependency_paths`
-- `tests/unit/test_cli_rf_options.py::test_rf_repeat_and_composition_are_canonical_and_deterministic`
+- `tests/conformance/test_solver_backend_controls_conformance.py::test_controlled_fixture_recovers_on_alt_stage_with_deterministic_metadata`
+- `tests/conformance/test_phase2_rf_fallback_execution_conformance.py::test_sweep_rf_payload_paths_keep_mna_gmin_eligible_and_conversion_no_gmin`
+- `tests/conformance/test_rf_warning_propagation_conformance.py::test_rf_warning_propagation_parity_and_context_across_metrics`
+- `tests/conformance/test_check_command_contract_conformance.py::test_check_json_output_validates_against_canonical_schema`
+- `tests/conformance/test_phase2_diagnostics_taxonomy_conformance.py::test_track_a_runtime_inventory_guard_passes_baseline`
+- `tests/conformance/test_phase2_ci_gate_conformance.py::test_ci_workflow_runs_all_phase2_category_lanes_with_thread_controls_guard`
 
 ## Usage
 
@@ -31,18 +34,24 @@ uv sync --all-groups
 # executable now
 uv run rfmna --help
 uv run rfmna run --help
+uv run rfmna check --help
 ```
 
-Detailed Phase 1 usage and behavior notes:
+Detailed implemented usage/limits notes:
 
-- `docs/dev/phase1_usage.md`
+- `docs/dev/phase2_usage.md`
+- `docs/dev/phase1_usage.md` (historical Phase 1 scope reference)
 
 ## Validation
 
 ```bash
 uv run ruff check .
 uv run mypy src
-uv run pytest -m "unit or conformance"
+uv run pytest -m unit
+uv run pytest -m conformance
+uv run pytest -m property
+uv run pytest -m regression
+uv run pytest -m cross_check
 ```
 
 ## Contract References
