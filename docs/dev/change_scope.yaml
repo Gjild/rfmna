@@ -2,11 +2,20 @@
   "schema_version": 1,
   "declared_frozen_ids": "none",
   "evidence": {
-    "semver_bump": null,
-    "decision_records": [],
-    "conformance_updates": [],
-    "migration_notes": [],
-    "reproducibility_impact_statement_path": null
+    "semver_bump": {
+      "from_version": "0.1.1",
+      "to_version": "0.1.2"
+    },
+    "decision_records": [
+      "docs/spec/decision_records/2026-02-28-p2-06-regression-golden-tolerance-baseline-v0-1-2.md"
+    ],
+    "conformance_updates": [
+      "tests/conformance/test_phase2_governance_conformance.py"
+    ],
+    "migration_notes": [
+      "docs/spec/migration_notes/2026-02-28-v0-1-2-p2-06-regression-golden-tolerance-baseline.md"
+    ],
+    "reproducibility_impact_statement_path": "docs/dev/reproducibility_impact_p2_06.md"
   },
-  "notes": "P2-05 hardens `rfmna check` with additive deterministic JSON output (`--format json`), canonical schema `docs/spec/schemas/check_output_v1.json`, and typed loader/internal diagnostics. Default text grammar and run/check exit mapping remain contract-equivalent (`check`: 0 for no-error/warnings-only, 2 for any error path); no frozen artifact #9 semantic change is introduced."
+  "notes": "P2-06 introduces `docs/dev/tolerances/regression_baseline_v1.yaml` as a normative_gating merge-gating tolerance source used by regression pass/fail assertions. No frozen IDs are touched, but full evidence is declared to satisfy governance policy for touched normative_gating tolerance sources."
 }

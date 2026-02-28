@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "policy": "canonical_json_sha256",
+  "hashes": [
+    {
+      "fixture": "tests/fixtures/regression/controlled_source_two_port_v1.json",
+      "canonical_sha256": "bfcecc93f7c7d88d6ae37c32a1ae1e992b01b3ae7d08b0c1d2e621e31a014584"
+    },
+    {
+      "fixture": "tests/fixtures/regression/fail_sentinel_one_port_v1.json",
+      "canonical_sha256": "26d28dce1df8adea6f250a7a50a6266d8d851f3ed8e3d59ca9c3a7dfbc6f9202"
+    },
+    {
+      "fixture": "tests/fixtures/regression/rc_rlc_one_port_v1.json",
+      "canonical_sha256": "d8b345e6abe4e07282ddc6b86b20f4ebfbb44c217be0d9619eece5f547dacf0d"
+    },
+    {
+      "fixture": "tests/fixtures/regression/two_port_yzs_consistency_v1.json",
+      "canonical_sha256": "ab0b1be77342d7c0e5f0dbb342f1ae27a159aae014dc135cb4ca5e0e8417d792"
+    }
+  ]
+}

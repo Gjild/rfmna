@@ -47,3 +47,5 @@ Example:
   establishes and governs the v4.0.0 frozen-artifact baseline used by Phase 1 work.
 - `2026-02-28-p2-02-fallback-ladder-rf-hardening.md`:
   governs P2-02 fallback ladder and RF conversion hardening scope for v0.1.1.
+- `2026-02-28-p2-06-regression-golden-tolerance-baseline-v0-1-2.md`:
+  governs P2-06 regression golden/tolerance baseline promotion to normative merge-gating in v0.1.2.

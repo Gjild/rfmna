@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "artifact_id": "regression_baseline_v1",
+  "status": "normative_gating",
+  "notes": "Initial P2-06 regression baseline; consumed by merge-gating regression assertions before P2-08 calibration refinement.",
+  "profiles": {
+    "rf_matrix_tight": {
+      "rtol": 1e-12,
+      "atol": 1e-12
+    },
+    "rf_matrix_loose": {
+      "rtol": 1e-09,
+      "atol": 1e-09
+    }
+  },
+  "sentinel_policy": {
+    "complex_pair_null_representation": [
+      null,
+      null
+    ],
+    "required_status_for_sentinel_points": "fail"
+  }
+}

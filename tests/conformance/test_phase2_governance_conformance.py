@@ -47,6 +47,7 @@ _FROZEN_RULE_SAMPLE_PATHS = {
 _FROZEN_ID_THREAD_DEFAULTS = 12
 _FROZEN_ID_CLI_EXIT = 9
 _FROZEN_ID_THRESHOLD_STATUS_BANDS = 5
+_REGRESSION_TOLERANCE_SOURCE = "docs/dev/tolerances/regression_baseline_v1.yaml"
 
 
 def _repo_root() -> Path:
@@ -334,6 +335,17 @@ def test_governance_gate_blocks_calibration_only_merge_gating_source(tmp_path: P
     assert not result.passed
     assert any("cannot be calibration_only" in error for error in result.errors)
     assert any("must be normative_gating" in error for error in result.errors)
+
+
+def test_baseline_classification_marks_regression_tolerance_as_normative_merge_gating() -> None:
+    classification = _load_tolerance_classification(
+        _repo_root() / "docs/dev/threshold_tolerance_classification.yaml"
+    )
+    assert classification.entries[_REGRESSION_TOLERANCE_SOURCE] == "normative_gating"
+    assert _REGRESSION_TOLERANCE_SOURCE in classification.merge_gating_sources
+    assert (
+        classification.entries["docs/dev/tolerances/calibration_seed_v1.yaml"] == "calibration_only"
+    )
 
 
 def test_governance_gate_requires_change_scope_artifact() -> None:

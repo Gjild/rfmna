@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tests/regression/schemas/rf_regression_fixture_v1.schema.json",
+  "title": "RFRegressionFixtureV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "fixture_id",
+    "scenario",
+    "tolerance_profile",
+    "frequencies_hz",
+    "ports",
+    "expected"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "fixture_id": {
+      "type": "string"
+    },
+    "scenario": {
+      "type": "string",
+      "enum": [
+        "rc_rlc_sanity",
+        "controlled_source_case",
+        "two_port_yzs_consistency",
+        "failed_point_sentinel"
+      ]
+    },
+    "tolerance_profile": {
+      "type": "string",
+      "enum": [
+        "rf_matrix_tight",
+        "rf_matrix_loose"
+      ]
+    },
+    "frequencies_hz": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "number"
+      }
+    },
+    "ports": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "items": {
+        "type": "string"
+      }
+    },
+    "expected": {
+      "type": "object",
+      "required": ["y", "z", "s", "status", "diagnostic_codes"],
+      "additionalProperties": false,
+      "properties": {
+        "y": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": ["number", "null"]
+                }
+              }
+            }
+          }
+        },
+        "z": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": ["number", "null"]
+                }
+              }
+            }
+          }
+        },
+        "s": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": ["number", "null"]
+                }
+              }
+            }
+          }
+        },
+        "s_from_y": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": ["number", "null"]
+                }
+              }
+            }
+          }
+        },
+        "status": {
+          "type": "object",
+          "required": ["y", "z", "s"],
+          "additionalProperties": false,
+          "properties": {
+            "y": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "enum": ["pass", "degraded", "fail"]
+              }
+            },
+            "z": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "enum": ["pass", "degraded", "fail"]
+              }
+            },
+            "s": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "enum": ["pass", "degraded", "fail"]
+              }
+            },
+            "s_from_y": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "enum": ["pass", "degraded", "fail"]
+              }
+            }
+          }
+        },
+        "diagnostic_codes": {
+          "type": "object",
+          "required": ["y", "z", "s"],
+          "additionalProperties": false,
+          "properties": {
+            "y": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "z": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "s": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "s_from_y": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "fail_point_indices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}

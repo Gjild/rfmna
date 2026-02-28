@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "fixture_id": "reg-fail-sentinel-one-port-v1",
+  "scenario": "failed_point_sentinel",
+  "tolerance_profile": "rf_matrix_tight",
+  "frequencies_hz": [
+    1.0,
+    2.0,
+    3.0
+  ],
+  "ports": [
+    "P1"
+  ],
+  "expected": {
+    "y": [
+      [
+        [
+          [
+            0.5,
+            -0.0
+          ]
+        ]
+      ],
+      [
+        [
+          [
+            null,
+            null
+          ]
+        ]
+      ],
+      [
+        [
+          [
+            0.5,
+            -0.0
+          ]
+        ]
+      ]
+    ],
+    "z": [
+      [
+        [
+          [
+            2.0,
+            0.0
+          ]
+        ]
+      ],
+      [
+        [
+          [
+            null,
+            null
+          ]
+        ]
+      ],
+      [
+        [
+          [
+            2.0,
+            0.0
+          ]
+        ]
+      ]
+    ],
+    "s": [
+      [
+        [
+          [
+            -0.9230769230769231,
+            0.0
+          ]
+        ]
+      ],
+      [
+        [
+          [
+            null,
+            null
+          ]
+        ]
+      ],
+      [
+        [
+          [
+            -0.9230769230769231,
+            0.0
+          ]
+        ]
+      ]
+    ],
+    "status": {
+      "y": [
+        "pass",
+        "fail",
+        "pass"
+      ],
+      "z": [
+        "pass",
+        "fail",
+        "pass"
+      ],
+      "s": [
+        "pass",
+        "fail",
+        "pass"
+      ]
+    },
+    "diagnostic_codes": {
+      "y": [
+        [],
+        [
+          "E_NUM_SOLVE_FAILED"
+        ],
+        []
+      ],
+      "z": [
+        [],
+        [
+          "E_NUM_SOLVE_FAILED"
+        ],
+        []
+      ],
+      "s": [
+        [],
+        [
+          "E_NUM_SOLVE_FAILED"
+        ],
+        []
+      ]
+    },
+    "fail_point_indices": [
+      1
+    ]
+  }
+}

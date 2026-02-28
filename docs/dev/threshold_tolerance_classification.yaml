@@ -2,6 +2,11 @@
   "schema_version": 1,
   "entries": [
     {
+      "path": "docs/dev/tolerances/regression_baseline_v1.yaml",
+      "classification": "normative_gating",
+      "notes": "P2-06 regression-gating tolerance baseline; merge-blocking without full governance evidence."
+    },
+    {
       "path": "docs/spec/thresholds_v4_0_0.yaml",
       "classification": "normative_gating",
       "notes": "Frozen artifact #5 source; merge-blocking without full frozen-evidence set."
@@ -13,6 +18,7 @@
     }
   ],
   "merge_gating_tolerance_sources": [
+    "docs/dev/tolerances/regression_baseline_v1.yaml",
     "docs/spec/thresholds_v4_0_0.yaml"
   ],
   "promotion_policy_note": "A calibration_only source may be promoted only after decision-record approval and explicit reclassification to normative_gating in this table with conformance evidence."
