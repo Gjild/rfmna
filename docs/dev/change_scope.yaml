@@ -8,5 +8,5 @@
     "migration_notes": [],
     "reproducibility_impact_statement_path": null
   },
-  "notes": "P2-09 enforces explicit CI lanes for unit/conformance/property/regression/cross_check with per-lane non-empty collection guards, strict-marker/marker audit retention, thread-control conformance guard execution, AGENTS Phase 2 cross_check alignment audit, and failure artifact upload coverage for calibration/regression/cross_check diagnostics. Scope excludes frozen artifacts."
+  "notes": "P2-10 adds the Phase 2 conformance bundle matrix and coverage report with explicit area->conformance_id->test_id mappings, deterministic matrix validation, CI pass-status traceability hooks, standalone+sweep RF fallback conformance guards, and explicit freeze-boundary audit coverage. Scope excludes frozen artifacts."
 }
