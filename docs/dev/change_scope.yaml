@@ -8,5 +8,5 @@
     "migration_notes": [],
     "reproducibility_impact_statement_path": null
   },
-  "notes": "P2-03 diagnostics taxonomy closure adds Track A runtime diagnostics inventory/catalog guards and Track B typed error-code registry/mapping guards without touching frozen artifact surfaces."
+  "notes": "P2-04 normalizes runtime diagnostic emission through canonical catalog-backed builders/adapters across parser/preflight/sweep/rf_metrics/CLI without changing frozen artifact surfaces or warning-propagation targets from P2-02."
 }

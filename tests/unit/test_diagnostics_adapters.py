@@ -12,7 +12,10 @@ from rfmna.diagnostics import (
     SolverStage,
     adapt_validation_issue,
     adapt_validation_issues,
+    build_diagnostic_event,
     canonical_witness_json,
+    prefixed_witness,
+    remap_diagnostic_event,
 )
 from rfmna.diagnostics.adapters import ValidationIssueAdapterError
 from rfmna.elements import (
@@ -31,6 +34,7 @@ from rfmna.elements import (
 pytestmark = pytest.mark.unit
 
 _REPEATS = 25
+_POINT_INDEX = 3
 EXPECTED_VALIDATOR_CODES = (
     "E_MODEL_C_NEGATIVE",
     "E_MODEL_G_NEGATIVE",
@@ -135,3 +139,69 @@ def test_catalog_codes_are_unique_and_schema_complete() -> None:
             == REQUIRED_CATALOG_FIELDS
         )
         assert metadata.suggested_action
+
+
+def test_build_diagnostic_event_resolves_catalog_defaults() -> None:
+    event = build_diagnostic_event(
+        code="E_NUM_SOLVE_FAILED",
+        message="point solve failed",
+        element_id="solver",
+    )
+    assert event.severity == Severity.ERROR
+    assert event.solver_stage == SolverStage.SOLVE
+    assert (
+        event.suggested_action
+        == CANONICAL_DIAGNOSTIC_CATALOG["E_NUM_SOLVE_FAILED"].suggested_action
+    )
+    assert event.element_id == "solver"
+
+
+def test_build_diagnostic_event_requires_explicit_metadata_for_uncataloged_code() -> None:
+    with pytest.raises(ValueError, match="not in canonical catalog"):
+        build_diagnostic_event(
+            code="E_FAKE_NOT_IN_CATALOG",
+            message="custom failure",
+            element_id="solver",
+        )
+
+    event = build_diagnostic_event(
+        code="E_FAKE_NOT_IN_CATALOG",
+        message="custom failure",
+        severity=Severity.ERROR,
+        solver_stage=SolverStage.POSTPROCESS,
+        suggested_action="fix custom issue",
+        element_id="solver",
+    )
+    assert event.code == "E_FAKE_NOT_IN_CATALOG"
+    assert event.solver_stage == SolverStage.POSTPROCESS
+
+
+def test_remap_diagnostic_event_applies_point_context_and_prefixed_witness_deterministically() -> (
+    None
+):
+    base = build_diagnostic_event(
+        code="W_NUM_ILL_CONDITIONED",
+        message="warn",
+        severity=Severity.WARNING,
+        solver_stage=SolverStage.SOLVE,
+        suggested_action="review warning",
+        element_id="solver",
+        witness={"z": 1, "a": 2},
+    )
+    remapped = remap_diagnostic_event(
+        base,
+        frequency_hz=1.0,
+        frequency_index=_POINT_INDEX,
+        witness=prefixed_witness(
+            prefix="upstream",
+            payload=base.witness,
+            extras={"column_index": 1, "driven_port_id": "p1"},
+        ),
+    )
+
+    assert remapped.frequency_hz == pytest.approx(1.0)
+    assert remapped.frequency_index == _POINT_INDEX
+    assert remapped.element_id == "solver"
+    assert canonical_witness_json(remapped.witness) == (
+        '{"column_index":1,"driven_port_id":"p1","upstream":{"a":2,"z":1}}'
+    )

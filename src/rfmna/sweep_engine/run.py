@@ -7,7 +7,13 @@ from typing import Literal, Protocol, runtime_checkable
 import numpy as np
 from numpy.typing import NDArray
 
-from rfmna.diagnostics import DiagnosticEvent, Severity, SolverStage, diagnostic_sort_key
+from rfmna.diagnostics import (
+    DiagnosticEvent,
+    Severity,
+    SolverStage,
+    build_diagnostic_event,
+    diagnostic_sort_key,
+)
 from rfmna.rf_metrics import (
     convert_y_to_s,
     convert_z_to_s,
@@ -214,19 +220,22 @@ def run_sweep(  # noqa: PLR0913
             continue
 
         for warning in solve_result.warnings:
+            warning_event = build_diagnostic_event(
+                code=warning.code,
+                severity=Severity.WARNING,
+                message=warning.message,
+                suggested_action="review warning and solver metadata",
+                solver_stage=SolverStage.SOLVE,
+                element_id="solver",
+                frequency_hz=frequency_hz,
+                frequency_index=point_index,
+                witness={"warning_code": warning.code},
+            )
             diagnostics_lists[point_index].append(
-                SweepDiagnostic(
-                    code=warning.code,
-                    severity="warning",
-                    message=warning.message,
-                    suggested_action="review warning and solver metadata",
-                    solver_stage="solve",
+                _event_to_sweep_diagnostic(
+                    warning_event,
                     point_index=point_index,
                     frequency_hz=frequency_hz,
-                    element_id="solver",
-                    witness={
-                        "warning_code": warning.code,
-                    },
                 )
             )
 
@@ -510,16 +519,21 @@ def _error_diagnostic(  # noqa: PLR0913
     element_id: str = "sweep_engine",
     witness: object | None = None,
 ) -> SweepDiagnostic:
-    return SweepDiagnostic(
+    event = build_diagnostic_event(
         code=code,
-        severity="error",
+        severity=Severity.ERROR,
         message=message,
         suggested_action=suggested_action,
-        solver_stage=stage,
+        solver_stage=_SWEEP_STAGE_TO_CANONICAL[stage],
+        element_id=element_id,
+        frequency_hz=frequency_hz,
+        frequency_index=point_index,
+        witness=witness,
+    )
+    return _event_to_sweep_diagnostic(
+        event,
         point_index=point_index,
         frequency_hz=frequency_hz,
-        element_id=element_id,
-        witness=witness,
     )
 
 
@@ -557,7 +571,7 @@ def sweep_diagnostic_sort_key(
 
 
 def _sweep_diagnostic_to_event(diag: SweepDiagnostic) -> DiagnosticEvent:
-    return DiagnosticEvent(
+    return build_diagnostic_event(
         code=diag.code,
         severity=_SWEEP_SEVERITY_TO_CANONICAL[diag.severity],
         message=diag.message,
@@ -568,4 +582,26 @@ def _sweep_diagnostic_to_event(diag: SweepDiagnostic) -> DiagnosticEvent:
         frequency_index=diag.frequency_index,
         sweep_index=diag.sweep_index,
         witness=diag.witness,
+    )
+
+
+def _event_to_sweep_diagnostic(
+    event: DiagnosticEvent,
+    *,
+    point_index: int,
+    frequency_hz: float,
+) -> SweepDiagnostic:
+    resolved_frequency_hz = frequency_hz if event.frequency_hz is None else event.frequency_hz
+    return SweepDiagnostic(
+        code=event.code,
+        severity=event.severity.value,
+        message=event.message,
+        suggested_action=event.suggested_action,
+        solver_stage=event.solver_stage.value,
+        point_index=point_index,
+        frequency_hz=resolved_frequency_hz,
+        element_id=event.element_id or "sweep_engine",
+        frequency_index=event.frequency_index,
+        sweep_index=event.sweep_index,
+        witness=event.witness,
     )

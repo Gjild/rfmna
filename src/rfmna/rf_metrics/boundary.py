@@ -18,9 +18,8 @@ from scipy.sparse import (  # type: ignore[import-untyped]
 
 from rfmna.diagnostics import (
     DiagnosticEvent,
-    PortContext,
-    Severity,
     SolverStage,
+    build_diagnostic_event,
     sort_diagnostics,
 )
 from rfmna.solver.backend import SparseComplexMatrix
@@ -654,13 +653,12 @@ def _boundary_error(
     port_id: str | None = None,
     witness: object | None = None,
 ) -> DiagnosticEvent:
-    return DiagnosticEvent(
+    return build_diagnostic_event(
         code=code,
-        severity=Severity.ERROR,
         message=message,
         suggested_action=suggested_action,
         solver_stage=SolverStage.ASSEMBLE,
         element_id=_RF_BOUNDARY_ELEMENT_ID,
-        port_context=PortContext(port_id=port_id) if port_id is not None else None,
+        port_id=port_id,
         witness=witness,
     )

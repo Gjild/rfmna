@@ -7,7 +7,13 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.sparse import csc_matrix, diags, eye  # type: ignore[import-untyped]
 
-from rfmna.diagnostics import DiagnosticEvent, PortContext, Severity, SolverStage, sort_diagnostics
+from rfmna.diagnostics import (
+    DiagnosticEvent,
+    Severity,
+    SolverStage,
+    build_diagnostic_event,
+    sort_diagnostics,
+)
 from rfmna.solver import FallbackRunConfig, SolveResult, solve_linear_system
 from rfmna.solver.backend import SparseComplexMatrix
 
@@ -378,7 +384,7 @@ def _mapped_solver_warnings(  # noqa: PLR0913
     mapped: list[DiagnosticEvent] = []
     for warning in solve_result.warnings:
         mapped.append(
-            DiagnosticEvent(
+            build_diagnostic_event(
                 code=warning.code,
                 severity=Severity.WARNING,
                 message=warning.message,
@@ -504,14 +510,13 @@ def _point_error(  # noqa: PLR0913
     port_id: str | None = None,
     witness: object | None = None,
 ) -> DiagnosticEvent:
-    return DiagnosticEvent(
+    return build_diagnostic_event(
         code=code,
-        severity=Severity.ERROR,
         message=message,
         suggested_action=suggested_action,
         solver_stage=stage,
         element_id=_S_PARAM_ELEMENT_ID,
-        port_context=PortContext(port_id=port_id) if port_id is not None else None,
+        port_id=port_id,
         frequency_hz=frequency_hz,
         frequency_index=point_index,
         witness=witness,

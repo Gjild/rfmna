@@ -8,7 +8,12 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
-from rfmna.diagnostics import DiagnosticEvent, PortContext, Severity, SolverStage, sort_diagnostics
+from rfmna.diagnostics import (
+    DiagnosticEvent,
+    SolverStage,
+    build_diagnostic_event,
+    sort_diagnostics,
+)
 
 from .boundary import PortBoundary
 from .z_params import ZAssemblePointFn, ZSolvePointFn, extract_z_parameters
@@ -272,14 +277,13 @@ def _point_error(  # noqa: PLR0913
     port_id: str | None = None,
     witness: object | None = None,
 ) -> DiagnosticEvent:
-    return DiagnosticEvent(
+    return build_diagnostic_event(
         code=code,
-        severity=Severity.ERROR,
         message=message,
         suggested_action=suggested_action,
         solver_stage=stage,
         element_id=_IMPEDANCE_ELEMENT_ID,
-        port_context=PortContext(port_id=port_id) if port_id is not None else None,
+        port_id=port_id,
         frequency_hz=frequency_hz,
         frequency_index=point_index,
         witness=witness,

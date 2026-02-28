@@ -8,7 +8,15 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.sparse import csc_matrix  # type: ignore[import-untyped]
 
-from rfmna.diagnostics import DiagnosticEvent, PortContext, Severity, SolverStage, sort_diagnostics
+from rfmna.diagnostics import (
+    DiagnosticEvent,
+    Severity,
+    SolverStage,
+    build_diagnostic_event,
+    prefixed_witness,
+    remap_diagnostic_event,
+    sort_diagnostics,
+)
 from rfmna.solver import (
     FallbackRunConfig,
     SolveResult,
@@ -586,22 +594,18 @@ def _mapped_boundary_diagnostics(
     mapped: list[DiagnosticEvent] = []
     for diagnostic in result.diagnostics:
         mapped.append(
-            DiagnosticEvent(
-                code=diagnostic.code,
-                severity=diagnostic.severity,
-                message=diagnostic.message,
-                suggested_action=diagnostic.suggested_action,
-                solver_stage=diagnostic.solver_stage,
-                element_id=diagnostic.element_id,
-                node_context=diagnostic.node_context,
-                port_context=diagnostic.port_context,
+            remap_diagnostic_event(
+                diagnostic,
                 frequency_hz=frequency_hz,
                 frequency_index=point_index,
-                witness={
-                    "boundary_witness": diagnostic.witness,
-                    "column_index": column_index,
-                    "driven_port_id": driven_port_id,
-                },
+                witness=prefixed_witness(
+                    prefix="boundary_witness",
+                    payload=diagnostic.witness,
+                    extras={
+                        "column_index": column_index,
+                        "driven_port_id": driven_port_id,
+                    },
+                ),
             )
         )
     return tuple(sort_diagnostics(mapped))
@@ -618,7 +622,7 @@ def _mapped_solver_warnings(  # noqa: PLR0913
     mapped: list[DiagnosticEvent] = []
     for warning in solve_result.warnings:
         mapped.append(
-            DiagnosticEvent(
+            build_diagnostic_event(
                 code=warning.code,
                 severity=Severity.WARNING,
                 message=warning.message,
@@ -647,20 +651,14 @@ def _mapped_upstream_diagnostics(
     mapped: list[DiagnosticEvent] = []
     for diagnostic in diagnostics:
         mapped.append(
-            DiagnosticEvent(
-                code=diagnostic.code,
-                severity=diagnostic.severity,
-                message=diagnostic.message,
-                suggested_action=diagnostic.suggested_action,
-                solver_stage=diagnostic.solver_stage,
-                element_id=diagnostic.element_id,
-                node_context=diagnostic.node_context,
-                port_context=diagnostic.port_context,
+            remap_diagnostic_event(
+                diagnostic,
                 frequency_hz=frequency_hz,
                 frequency_index=point_index,
-                witness={
-                    witness_prefix: diagnostic.witness,
-                },
+                witness=prefixed_witness(
+                    prefix=witness_prefix,
+                    payload=diagnostic.witness,
+                ),
             )
         )
     return tuple(sort_diagnostics(mapped))
@@ -677,14 +675,13 @@ def _point_error(  # noqa: PLR0913
     port_id: str | None = None,
     witness: object | None = None,
 ) -> DiagnosticEvent:
-    return DiagnosticEvent(
+    return build_diagnostic_event(
         code=code,
-        severity=Severity.ERROR,
         message=message,
         suggested_action=suggested_action,
         solver_stage=stage,
         element_id=_Z_EXTRACT_ELEMENT_ID,
-        port_context=PortContext(port_id=port_id) if port_id is not None else None,
+        port_id=port_id,
         frequency_hz=frequency_hz,
         frequency_index=point_index,
         witness=witness,

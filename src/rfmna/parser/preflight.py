@@ -4,11 +4,9 @@ from collections import defaultdict
 from dataclasses import dataclass
 from math import isfinite
 
+from rfmna.diagnostics.adapters import build_diagnostic_event
 from rfmna.diagnostics.models import (
     DiagnosticEvent,
-    NodeContext,
-    PortContext,
-    Severity,
     SolverStage,
 )
 from rfmna.diagnostics.sort import sort_diagnostics
@@ -138,15 +136,14 @@ class _ErrorSpec:
 def _make_error(
     spec: _ErrorSpec,
 ) -> DiagnosticEvent:
-    return DiagnosticEvent(
+    return build_diagnostic_event(
         code=spec.code,
-        severity=Severity.ERROR,
         message=spec.message,
         suggested_action=spec.suggested_action,
         solver_stage=SolverStage.PREFLIGHT,
         element_id=spec.element_id,
-        node_context=NodeContext(node_id=spec.node_id) if spec.node_id is not None else None,
-        port_context=PortContext(port_id=spec.port_id) if spec.port_id is not None else None,
+        node_id=spec.node_id,
+        port_id=spec.port_id,
         witness=spec.witness,
     )
 

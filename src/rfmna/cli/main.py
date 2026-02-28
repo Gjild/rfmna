@@ -8,7 +8,13 @@ import numpy as np
 import typer
 from numpy.typing import NDArray
 
-from rfmna.diagnostics import DiagnosticEvent, Severity, SolverStage, sort_diagnostics
+from rfmna.diagnostics import (
+    DiagnosticEvent,
+    Severity,
+    SolverStage,
+    build_diagnostic_event,
+    sort_diagnostics,
+)
 from rfmna.parser import PreflightInput, preflight_check
 from rfmna.rf_metrics import PortBoundary, SParameterResult, YParameterResult, ZParameterResult
 from rfmna.solver import (
@@ -338,9 +344,8 @@ def _cli_option_error(
     suggested_action: str,
     witness: object,
 ) -> DiagnosticEvent:
-    return DiagnosticEvent(
+    return build_diagnostic_event(
         code=code,
-        severity=Severity.ERROR,
         message=message,
         suggested_action=suggested_action,
         solver_stage=SolverStage.PARSE,
