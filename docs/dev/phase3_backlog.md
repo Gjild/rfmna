@@ -8,7 +8,9 @@ Phase 2 is complete and governance-closed. Baseline snapshot at backlog authorin
 - package version: `0.1.2` (`pyproject.toml`, `src/rfmna/__init__.py`)
 - backlog-authoring commit anchor: `00dc0647ad775d696ac1d34341b5baf449665c02`
 - baseline CI/artifact anchor: workflow `.github/workflows/ci.yml`, artifact `phase2-gate-status` for the authoring commit (or local-equivalent verification record when CI URL is unavailable)
-- historical baseline verification reference: `uv run pytest -q` passed (`2026-02-27` historical snapshot recorded in `docs/dev/phase2_backlog.md`)
+- historical pre-closure baseline verification reference only: `uv run pytest -q` passed (`2026-02-27` snapshot recorded in `docs/dev/phase2_backlog.md`)
+- Phase 2 closure evidence pointers (authoritative for closure status): `docs/dev/phase2_gate.md`, `docs/dev/phase2_conformance_coverage.md` (evaluated at the backlog-authoring commit anchor)
+- Date clarity: `2026-02-27` evidence above is historical pre-closure context only; closure-authoritative Phase 2 evidence is the gate/conformance state at backlog anchor commit `00dc0647ad775d696ac1d34341b5baf449665c02`.
 - current status docs:
   - `docs/dev/phase2_usage.md`
   - `docs/dev/phase2_conformance_coverage.md`
@@ -102,6 +104,7 @@ Phase-3-critical gaps to close:
    - `cross_check`
    Per-task test additions are required for affected behavior domains per the runbook (not every task must add tests in every category).
 18. Every new failure code introduced by Phase 3 must be explicitly classified as Track A runtime diagnostic (catalog + runtime inventory) or Track B typed internal error (registry + mapping matrix), with CI guards for uncataloged and mis-mapped failures.
+19. Preserve strict two-stage assembly behavior for topology-stable sweeps: compile sparsity pattern/index maps once and reuse across points, with numeric fill per point only (no per-point pattern recompilation).
 
 ---
 
@@ -121,17 +124,20 @@ Establish a formal Phase 3 gate equivalent in rigor to the Phase 2 governance ga
 - Require anti-tamper governance evaluation: Phase 3 rule/classification checks must evaluate against baseline refs (base-ref), not mutable head-branch edits.
 - Define deterministic scope-to-evidence mapping for new non-frozen Phase 3 contract surfaces using machine-checkable artifacts and CI enforcement (no prose-only interpretation paths).
 - Define deterministic optional-track activation criteria for usage-driven scope toggles (minimum evidence type, freshness window, approval rule, and CI-verifiable pass/fail logic).
+- Define deterministic optional-track freshness contract: `usage_evidence_date` format, UTC basis, and canonical comparison timestamp source for CI decisions (no locale/timezone-dependent logic).
+- Define deterministic optional-track scope detection rules: path-pattern matching against base-ref diff determines when optional-track governance checks are mandatory even if activation is not declared.
 
 **Deliverables**
 
 - `docs/dev/phase3_gate.md`
 - `docs/dev/phase3_process_traceability.md`
 - CI updates in `.github/workflows/ci.yml` for Phase 3 informational + blocking gate signals
+- executable governance checker interface: `python -m rfmna.governance.phase3_gate` with deterministic sub-gate selection via `--sub-gate`
 - updates to `docs/dev/frozen_change_governance_rules.yaml` path mappings when Phase 3 introduces authoritative files/schemas that affect frozen IDs
 - `docs/dev/phase3_contract_surface_governance_rules.yaml` (scope->evidence mapping + path-detection rules for new non-frozen contract surfaces)
 - `docs/dev/phase3_change_surface.yaml` + `docs/dev/phase3_change_surface_schema_v1.json` + `docs/dev/phase3_change_surface_policy.md` (machine-checkable declaration + policy)
 - `docs/dev/optional_track_activation.yaml` + `docs/dev/optional_track_activation_schema_v1.json` (fixed-field activation evidence for usage-driven optional tracks)
-- `docs/dev/optional_track_activation_policy.md` (objective activation criteria, freshness window, approval rule, and CI decision logic)
+- `docs/dev/optional_track_activation_policy.md` (objective activation criteria, freshness window, approval rule, CI decision logic, deterministic time contract: `usage_evidence_date` in `YYYY-MM-DD` UTC compared against base-ref commit timestamp projected to UTC date, and deterministic path-scope trigger rules)
 - conformance tests for Phase 3 gate expectations, including non-regression pass/fail cases for inherited Phase 2 blocking gates
 - conformance/policy tests proving head-branch edits to Phase 3 governance rule artifacts cannot self-approve without corresponding baseline-ref evidence
 - conformance/policy tests (positive + negative) for new Phase 3 surface-governance declarations and scope/evidence mapping enforcement
@@ -139,36 +145,44 @@ Establish a formal Phase 3 gate equivalent in rigor to the Phase 2 governance ga
 **Acceptance**
 
 - Phase 3 gate status appears on every CI run.
+- A canonical executable Phase 3 gate checker is defined and used by CI: `python -m rfmna.governance.phase3_gate` (with deterministic `--sub-gate` behavior and pass/fail semantics).
 - Phase 2 blocking gates remain mandatory and non-weakened:
-  - `phase2_gate --sub-gate governance`
-  - `phase2_gate --sub-gate category-bootstrap`
+  - `python -m rfmna.governance.phase2_gate --sub-gate governance`
+  - `python -m rfmna.governance.phase2_gate --sub-gate category-bootstrap`
   - `docs/dev/change_scope.yaml` presence/schema and frozen-ID detection enforcement
   - threshold/tolerance classification enforcement from `docs/dev/threshold_tolerance_classification.yaml`
   - mandatory category lanes (`unit`, `conformance`, `property`, `regression`, `cross_check`) with strict markers and non-empty guards
 - New Phase 3 contract/surface additions are blocked when required evidence is missing.
 - Conformance tests prove inherited Phase 2 blockers still fail in negative cases (missing evidence, invalid scope declaration, missing/empty category lane conditions).
 - Phase 3 governance checks are anti-tamper by construction: rule/classification evaluation uses baseline refs, and negative tests prove mutable head-only edits cannot relax blocking outcomes.
+- Base-ref resolution is a blocking prerequisite for governance checks: missing/ambiguous/unresolvable base-ref context fails CI (no permissive fallback to head-only evaluation).
+- Conformance tests cover the canonical Phase 3 gate command interface with positive/negative fixtures for each independently blocking sub-gate.
 - When Phase 3 adds authoritative files/schemas that map to frozen artifacts, `docs/dev/frozen_change_governance_rules.yaml` detection paths are updated and conformance-tested so frozen-scope detection remains complete.
 - New non-frozen Phase 3 contract-surface changes are declared through machine-checkable artifacts and blocked in CI when declaration/schema/path-detection/scope-evidence checks fail.
 - Cross-consistency is blocking and conformance-tested:
   - `docs/dev/change_scope.yaml` remains authoritative for frozen-ID declaration,
   - `docs/dev/phase3_change_surface.yaml` declares only non-frozen Phase 3 contract surfaces,
   - overlap or mismatch between the two declaration paths fails CI.
-- When either optional track (P3-10/P3-11) is activated, `docs/dev/optional_track_activation.yaml` presence/schema validity is blocking in CI.
+- When either optional track (P3-10/P3-11) is activated, or optional-track scope is touched, `docs/dev/optional_track_activation.yaml` presence/schema validity is blocking in CI via the conditional optional-track sub-gate.
 - Optional-track activation decisions are objectively gateable and conformance-tested against `docs/dev/optional_track_activation_policy.md`:
   - minimum evidence type requirements are satisfied,
-  - evidence freshness window is satisfied,
+  - evidence freshness window is satisfied using deterministic UTC date logic (`usage_evidence_date` `YYYY-MM-DD` UTC compared to base-ref commit UTC date),
   - explicit approval rule is satisfied,
-  - positive and negative decision fixtures produce deterministic CI pass/fail outcomes.
+  - positive and negative decision fixtures (including boundary-date cases, optional-track-scope-touched-without-activation cases, and missing/unresolvable base-ref cases) produce deterministic CI pass/fail outcomes.
 
 **Sub-gates (independently blocking)**
 
 1. Inherited governance non-regression gate:
-   - `phase2_gate --sub-gate governance` and `phase2_gate --sub-gate category-bootstrap` remain enforced and blocking.
+   - `python -m rfmna.governance.phase2_gate --sub-gate governance` and `python -m rfmna.governance.phase2_gate --sub-gate category-bootstrap` remain enforced and blocking.
 2. Phase 3 contract-surface governance gate:
    - `phase3_contract_surface_governance_rules.yaml` + `phase3_change_surface.yaml` declaration/schema/path-detection checks are green.
 3. Anti-tamper gate:
    - baseline-ref evaluation is active, and head-branch edits cannot self-approve governance relaxations.
+   - base-ref missing/unresolvable/ambiguous states are independently blocking.
+4. Optional-track activation gate (conditional):
+   - activation predicate is deterministic and path-aware: the gate is active iff either optional track is declared `activated` in `docs/dev/optional_track_activation.yaml` OR base-ref diff path matching indicates optional-track scope is touched;
+   - when active, optional-track schema/policy/decision checks are independently blocking, including freshness-window evaluation against base-ref commit UTC date per `docs/dev/optional_track_activation_policy.md`;
+   - touching optional-track scope without valid activation evidence is blocking (CI fail).
 
 ---
 
@@ -194,13 +208,15 @@ Replace loader-boundary stub behavior with an in-repo deterministic design bundl
 
 **Acceptance**
 
-- `rfmna check <design>` and `rfmna run <design> --analysis ac` execute through in-repo loader for supported schema inputs.
-- Minimum required `design_bundle_v1` capability set is contract-parity with currently in-scope v4 inputs and conformance-covered for both `check` and `run` paths: `R/L/C/G`, independent `I/V` sources, controlled sources `VCCS/VCVS`, frequency-dependent compact linear forms, 1-port/2-port `Y` blocks, 1-port/2-port `Z` blocks, RF port declarations, linear/log frequency sweep grammar, and parameter sweep support.
-- Conformance IDs are defined for each required capability, and at least one regression fixture exists per required capability path.
-- If any currently in-scope v4 loader capability is deferred, it must be listed in `docs/dev/p3_loader_temporary_exclusions.yaml` with deterministic check/run diagnostics per exclusion, conformance evidence, and governance classification; omission is merge-blocking.
+- Interim P3-01 merge criteria (temporary exclusions allowed): `rfmna check <design>` and `rfmna run <design> --analysis ac` execute through in-repo loader for supported schema inputs, with conformance IDs and regression fixtures for implemented capability paths.
+- Temporary deferral of currently in-scope v4 loader capabilities is allowed only during interim implementation and must be explicitly listed in `docs/dev/p3_loader_temporary_exclusions.yaml` with deterministic check/run diagnostics per exclusion, conformance evidence, and governance classification; omission is merge-blocking while exclusions are present.
+- Phase 3 closure criteria for P3-01 (no exclusions): full contract-parity with currently in-scope v4 inputs is mandatory and conformance-covered for both `check` and `run` paths: `R/L/C/G`, independent `I/V` sources, controlled sources `VCCS/VCVS`, frequency-dependent compact linear forms, 1-port/2-port `Y` blocks, 1-port/2-port `Z` blocks, RF port declarations, linear/log frequency sweep grammar, and parameter sweep support.
+- Phase 3 closure criteria for P3-01 (no exclusions): `docs/dev/p3_loader_temporary_exclusions.yaml` must be absent or schema-valid empty before closure approval.
 - Loader failures emit typed deterministic diagnostics (no opaque boundaries).
 - Existing CLI exit semantics and check JSON schema behavior are preserved unless separately governed.
 - Any change to design-bundle schema version selection, active/default schema behavior, or ordering semantics is explicitly classified against frozen artifacts `#9/#10`; if the schema touches frequency grammar or sweep-generation semantics, classification against frozen artifact `#8` is also mandatory; frozen-impacting changes require semver bump + decision record + conformance updates + migration note + reproducibility impact statement.
+- Loader handling of RF port declarations includes explicit frozen artifact `#3` (port/wave conventions) impact determination with conformance non-regression tests through loader-driven `check/run` paths; if impacted, full frozen governance evidence is mandatory.
+- Loader-driven run paths preserve frozen fail-point semantics (artifact `#11`): no requested point omission, exact sentinel fill (`nan + 1j*nan` for complex outputs, `nan` for real outputs), `status=fail`, and mandatory diagnostics entries; conformance tests lock these invariants through loader-backed execution.
 - Loader/schema failure codes are Track-classified (`Track A` or `Track B`) with CI negative tests for uncataloged runtime diagnostics and mis-mapped typed codes.
 - Loader diagnostics are taxonomy-complete and deterministic: required fields (`code`, `severity`, `message`, context, sweep/frequency context when applicable, `suggested_action`, valid `solver_stage`, deterministic `witness`) and canonical ordering are enforced by conformance tests.
 - P3-01 explicitly records frozen artifact `#8` impact determination with non-regression conformance evidence, including explicit “no semantic change” evidence when applicable.
@@ -224,6 +240,7 @@ Introduce deterministic parser support for hierarchical composition constructs.
 - explicit schema-evolution decision artifact for hierarchy support: `docs/dev/p3_02_design_bundle_schema_evolution.md` choosing one path:
   - (a) introduce `docs/spec/schemas/design_bundle_v2.json`, or
   - (b) additive extension of `design_bundle_v1.json`
+- schema-evolution compatibility checker/tests for the selected path (v2 compatibility/default-selection/migration checks, or strict additive-v1 diff-policy checks)
 - diagnostics catalog and inventory updates for new runtime emission codes
 - Track B governance artifact updates (`docs/dev/typed_error_code_registry.yaml` and `docs/dev/typed_error_mapping_matrix.yaml`) whenever new typed internal failures are introduced
 - unit + property tests for permutation invariance and deterministic parse products
@@ -240,7 +257,7 @@ Introduce deterministic parser support for hierarchical composition constructs.
 - Named conformance IDs for P3-02 canonical parse-product determinism and diagnostics ordering/witness stability are present and mapped to executable tests.
 - Schema-evolution path is explicit and test-enforced:
   - if path (a): `design_bundle_v2.json` compatibility/default-selection/migration tests are present;
-  - if path (b): additive-v1 backward-compatibility conformance tests are present and frozen-impact classification is explicit.
+  - if path (b): strict additive-only v1 evolution is enforced by conformance/policy tests (no removed fields, no tightened validation constraints for existing fields, no changed defaults/implicit semantics for existing fields), additive-v1 backward-compatibility tests are present, and frozen-impact classification is explicit.
 
 ---
 
@@ -267,6 +284,8 @@ Compile hierarchical designs into canonical flattened IR deterministically.
 - Equivalent hierarchical designs elaborate to identical canonical IR ordering/hashes.
 - Elaboration failures include deterministic structured diagnostics and witnesses.
 - Downstream assembly/solve behavior remains contract-compliant and deterministic.
+- Hierarchy-enabled topology-stable sweeps preserve strict two-stage assembly behavior: compiled sparsity pattern/index maps are reused across points, and only numeric fill varies per point (no per-point pattern recompilation), enforced by conformance/regression evidence.
+- Elaboration diagnostics are taxonomy-complete and deterministic: required fields (`code`, `severity`, `message`, context, sweep/frequency context when applicable, `suggested_action`, valid `solver_stage`, deterministic `witness`) and canonical ordering are enforced by conformance tests.
 - New elaboration failure codes are Track-classified (`Track A` or `Track B`) with CI negative tests for uncataloged and mis-mapped codes.
 - Any change affecting canonical IR serialization or hash semantics is explicitly classified against frozen artifact `#7`; frozen-impacting changes require semver bump + decision record + conformance updates + migration note + reproducibility impact statement.
 
@@ -293,6 +312,8 @@ Finalize deterministic parameter binding semantics across hierarchy and runtime 
 
 - Parameter resolution is deterministic and reproducible under declaration permutations.
 - Conflicts/cycles emit explicit `E_MODEL_*` diagnostics with deterministic witness payloads.
+- P3-04 diagnostics are taxonomy-complete and deterministic: required fields (`code`, `severity`, `message`, context, sweep/frequency context when applicable, `suggested_action`, valid `solver_stage`, deterministic `witness`) and canonical ordering are enforced by conformance tests.
+- New P3-04 failure codes are Track-classified (`Track A` or `Track B`) with required catalog/inventory or typed-registry/mapping updates and CI negative tests for uncataloged/mis-mapped codes.
 - Override precedence is documented and test-locked with explicit conformance IDs and one-to-one tests for each precedence edge.
 - The locked precedence chain is a refinement of existing `file < CLI/API override` semantics: legacy file-vs-CLI/API outcomes remain unchanged unless governed as frozen-impacting.
 - Conformance tests explicitly prove legacy precedence compatibility; if any legacy outcome changes, frozen-artifact governance evidence is mandatory before merge.
@@ -362,6 +383,7 @@ Implement first-party practical linear RF card families with explicit numeric be
   - at least one cross-check reference fixture,
   - at least one invalid-domain diagnostic fixture.
 - Conformance coverage is mandatory for each required card family, with clause-mapped tests for equation semantics, interpolation/extrapolation policy, and diagnostics behavior.
+- Model-card-driven sweeps preserve strict two-stage assembly behavior for topology-stable cases: compiled sparsity pattern/index maps are reused across points, with per-point numeric fill only.
 - Model-card runtime diagnostics are taxonomy-complete and deterministic: required fields (`code`, `severity`, `message`, context, sweep/frequency context when applicable, `suggested_action`, valid `solver_stage`, deterministic `witness`) and canonical ordering are enforced by conformance tests.
 
 ---
@@ -376,11 +398,13 @@ Expose hierarchy/model-card workflows via stable CLI/API entry points.
 - Add deterministic CLI/API entry points for loading, checking, running, and inspecting composed designs.
 - Add optional deterministic introspection surfaces (for example elaborated IR export) as additive outputs only.
 - Preserve backward compatibility and existing output contracts unless explicitly governed.
+- Define a required CLI/API surface matrix (surface name, arguments, output schema ID, conformance ID, test ID) with at least one deterministic surface row for each operation class: `load`, `check`, `run`, and `inspect`.
 
 **Deliverables**
 
 - CLI/API updates in `src/rfmna/cli/` and relevant API modules
 - contract note for any new machine-readable outputs/schemas
+- required surface matrix artifact: `docs/dev/p3_07_surface_matrix.yaml` + schema `docs/dev/p3_07_surface_matrix_schema_v1.json`
 - unit + conformance tests for ordering, schema validity, and non-regression
 
 **Acceptance**
@@ -392,6 +416,7 @@ Expose hierarchy/model-card workflows via stable CLI/API entry points.
 - Machine-readable outputs lock deterministic key ordering and witness canonicalization under permutation tests.
 - Output fixtures used for contract validation are hash-locked with explicit approval workflow for updates.
 - Any output-schema active/default version or ordering change is explicitly classified against frozen artifacts `#9/#10`; if output-schema changes alter frequency grammar or sweep-generation semantics, classification against frozen artifact `#8` is also mandatory; frozen-impacting changes require semver bump + decision record + conformance updates + migration note + reproducibility impact statement.
+- The required surface matrix is complete and non-vacuous: each matrix row resolves to at least one executable conformance test, and the matrix covers `load`, `check`, `run`, and `inspect` operation classes.
 
 ---
 
@@ -421,6 +446,7 @@ Provide reusable, deterministic analysis templates for personal workflow acceler
 - Template output fixtures are hash-locked; updates require explicit approval workflow (no silent rewrites).
 - CI category selectors include non-vacuous `regression` coverage for template outputs and `conformance` checks for any template schema/output contract behavior.
 - Template determinism assertions are validated against `docs/dev/template_render_contract.md` in conformance tests.
+- Every newly introduced template command/API/machine-readable output surface is explicitly classified at introduction against frozen artifact `#10` (and `#9` where CLI output/exit semantics are implicated); if template output/schema changes touch frequency grammar or sweep-generation semantics, classification against frozen artifact `#8` is also mandatory; frozen-impacting changes require semver bump + decision record + conformance updates + migration note + reproducibility impact statement.
 
 ---
 
@@ -442,6 +468,7 @@ Ship executable Phase 3 examples that exercise full personal productivity workfl
 
 - `examples/` project assets (schema-valid designs and expected output manifests)
 - test harness under `tests/regression/`, with contract-level assertions in `tests/conformance/` when output-schema/governance behavior is exercised
+- at least one deterministic failing example path (or explicit negative harness mode) for failure-diagnostics contract validation
 - docs note for example workflow execution and expected artifacts
 
 **Acceptance**
@@ -449,6 +476,8 @@ Ship executable Phase 3 examples that exercise full personal productivity workfl
 - All canonical examples execute end-to-end via in-repo CLI/API workflows.
 - Output ordering/hashes are deterministic under identical inputs/configs.
 - Example failures provide structured diagnostics fully compliant with `docs/spec/diagnostics_taxonomy_v4_0_0.md`: required `code`, `severity`, `message`, context (`element_id` and/or node/port), sweep/frequency context when applicable, `suggested_action`, valid `solver_stage`, and deterministic witness payload assertions.
+- Example output fixtures/manifests are hash-locked; updates require explicit approval workflow and CI enforcement (no silent fixture/hash rewrites).
+- Failure-path coverage is non-vacuous: at least one intentional failing example (or deterministic negative harness mode) is executed in CI with conformance assertions for taxonomy-complete diagnostics and fail-path contract behavior.
 
 ---
 
@@ -476,6 +505,7 @@ Provide optional controlled-source expansion for current-controlled forms when j
 - No frozen-artifact updates merge without full governance evidence.
 - If not activated, this task is explicitly deferred with rationale in Phase 3 closure notes.
 - If activated, the activation PR must declare impacted frozen IDs in `docs/dev/change_scope.yaml`, provide schema-valid `docs/dev/optional_track_activation.yaml` with fixed fields (`usage_evidence_source`, `usage_evidence_date`, `activation_rationale`, `impacted_frozen_ids`, `approval_record`), and pass all active blocking gates from P3-00 (Phase 2 inherited governance/category gates, Phase 3 contract-surface governance gate, and anti-tamper gate).
+- If activated, `usage_evidence_date` must be `YYYY-MM-DD` UTC, and freshness-window evaluation must use the deterministic base-ref commit UTC date contract from `docs/dev/optional_track_activation_policy.md`.
 
 ---
 
@@ -503,6 +533,7 @@ Provide optional mutual-inductance support under deterministic and governed beha
 - No silent regularization or hidden stabilization paths are introduced.
 - If not activated, this task is explicitly deferred with rationale in Phase 3 closure notes.
 - If activated, the activation PR must declare impacted frozen IDs in `docs/dev/change_scope.yaml`, provide schema-valid `docs/dev/optional_track_activation.yaml` with fixed fields (`usage_evidence_source`, `usage_evidence_date`, `activation_rationale`, `impacted_frozen_ids`, `approval_record`), and pass all active blocking gates from P3-00 (Phase 2 inherited governance/category gates, Phase 3 contract-surface governance gate, and anti-tamper gate).
+- If activated, `usage_evidence_date` must be `YYYY-MM-DD` UTC, and freshness-window evaluation must use the deterministic base-ref commit UTC date contract from `docs/dev/optional_track_activation_policy.md`.
 
 ---
 
@@ -514,15 +545,20 @@ Freeze and audit Phase 3 productivity semantics with explicit conformance tracea
 **Scope**
 
 - Add conformance matrix mapping Phase 3 areas -> conformance IDs -> executable tests.
-- Cover loader contract, hierarchy elaboration/scoping, model-card registry/behavior, template determinism, and example workflows.
+- Cover loader contract, hierarchy elaboration/scoping, assembly pattern-reuse non-regression, model-card registry/behavior, template determinism, and example workflows.
 - Include governance-critical checks for any new schema/version contracts.
 - Require explicit matrix areas for:
   - `loader_contract`
   - `hierarchy_grammar`
   - `hierarchy_elaboration`
+  - `assembly_pattern_reuse_non_regression`
+  - `run_exit_semantics_non_regression`
+  - `sentinel_partial_sweep_non_regression`
   - `parameter_precedence_compatibility`
   - `model_card_registry_contract`
   - `model_card_numeric_policy`
+  - `diagnostics_track_a_inventory_non_regression`
+  - `diagnostics_track_b_mapping_non_regression`
   - `cli_api_productivity_outputs`
   - `template_determinism`
   - `example_e2e_workflows`
@@ -531,6 +567,9 @@ Freeze and audit Phase 3 productivity semantics with explicit conformance tracea
 - Lock matrix contract columns and ordering policy to Phase 2 standard:
   - required columns: `area`, `conformance_id`, `test_id`, `status`, `notes`
   - deterministic row ordering and executable nodeid resolution are mandatory and test-enforced
+- Lock matrix status policy to Phase 2 closure strictness:
+  - allowed `status` value is `covered` only
+  - conformance tests enforce status-domain validity (`covered` only) and fail on `planned|pending|partial|deferred` or any other value
 
 **Deliverables**
 
@@ -543,10 +582,12 @@ Freeze and audit Phase 3 productivity semantics with explicit conformance tracea
 - Normative/governance-critical Phase 3 behavior is auditable.
 - Deterministic ordering and witness stability are explicitly locked by tests.
 - Matrix includes explicit evidence entries for:
-  - each required core area key (`loader_contract`, `hierarchy_grammar`, `hierarchy_elaboration`, `parameter_precedence_compatibility`, `model_card_registry_contract`, `model_card_numeric_policy`, `cli_api_productivity_outputs`, `template_determinism`, `example_e2e_workflows`),
+  - each required core area key (`loader_contract`, `hierarchy_grammar`, `hierarchy_elaboration`, `assembly_pattern_reuse_non_regression`, `run_exit_semantics_non_regression`, `sentinel_partial_sweep_non_regression`, `parameter_precedence_compatibility`, `model_card_registry_contract`, `model_card_numeric_policy`, `diagnostics_track_a_inventory_non_regression`, `diagnostics_track_b_mapping_non_regression`, `cli_api_productivity_outputs`, `template_determinism`, `example_e2e_workflows`),
   - inherited Phase 2 blocking-governance non-regression in Phase 3 CI,
   - optional-track state handling (activated tracks must show full evidence; deferred tracks must show explicit defer record checks).
 - Conformance tests enforce required matrix columns, deterministic row ordering, and executable nodeid resolution for all listed `test_id` entries.
+- Conformance tests enforce `status == covered` for every matrix row.
+- Conformance coverage for `run_exit_semantics_non_regression` and `sentinel_partial_sweep_non_regression` is exercised through loader + hierarchy + model-card example workflows (not isolated unit-only paths).
 
 ---
 
@@ -574,6 +615,7 @@ Publish implemented-surface documentation for Phase 3 without aspirational drift
 - Every documented implemented-surface claim is listed in `docs/dev/phase3_docs_claim_map.yaml` (nodeid-resolved), schema-valid against `docs/dev/phase3_docs_claim_map_schema_v1.json`, and validated by CI.
 - No “planned but not implemented” statements in implemented-surface docs.
 - Optional-track status is explicit and evidence-backed.
+- Phase 3 closure evidence includes CI proof that loader temporary exclusions are fully closed (`docs/dev/p3_loader_temporary_exclusions.yaml` absent or schema-valid empty), matching Section 7 exit criterion #9.
 
 ---
 
@@ -597,8 +639,11 @@ Publish implemented-surface documentation for Phase 3 without aspirational drift
 Notes:
 
 - P3-10/P3-11 are conditional tracks; core Phase 3 closure does not require both unless explicitly activated.
-- Default state is deferred for both conditional tracks; activation requires explicit `docs/dev/change_scope.yaml` declaration, schema-valid `docs/dev/optional_track_activation.yaml`, and policy compliance from `docs/dev/optional_track_activation_policy.md`.
+- Default state is deferred for both conditional tracks; activation requires explicit `docs/dev/change_scope.yaml` declaration, schema-valid `docs/dev/optional_track_activation.yaml`, and policy compliance from `docs/dev/optional_track_activation_policy.md`; touching optional-track implementation scope without valid activation evidence is blocking via the optional-track sub-gate.
+- P3-03 intentionally precedes P3-05: hierarchy elaboration and assembly-pattern reuse invariants are locked first, so later model-card integration can be validated as non-regressive against the same compile-once/numeric-fill-per-point contract.
 - P3-05 intentionally precedes P3-04 because parameter-precedence lock in P3-04 depends on model-card default semantics established in P3-05.
+- P3-03 precedes P3-04 so hierarchy elaboration semantics (canonical instance paths, flattening, collision policy, structural diagnostics) are implemented before hierarchy-aware parameter binding lock and precedence conformance.
+- P3-04 finalizes precedence on top of elaborated hierarchy outputs and must explicitly classify any resulting canonical IR/hash semantic changes against frozen artifact `#7`.
 - If either conditional track is activated, its full governance and conformance obligations become mandatory before closure.
 
 ---
@@ -607,7 +652,7 @@ Notes:
 
 Phase 3 is complete only when all core criteria are true:
 
-1. In-repo deterministic design loader is available for supported design schema inputs.
+1. In-repo deterministic design loader has full Phase 3 closure parity with currently in-scope v4 inputs from P3-01 (`R/L/C/G`, independent `I/V` sources, controlled sources `VCCS/VCVS`, frequency-dependent compact linear forms, 1-port/2-port `Y` blocks, 1-port/2-port `Z` blocks, RF port declarations, linear/log frequency sweep grammar, parameter sweep support), with conformance-matrix evidence rows mapped to executable tests for each listed capability path.
 2. Hierarchical composition (subcircuits/macros) is implemented with deterministic elaboration and canonical IR output.
 3. Hierarchical parameter scoping/override precedence is documented and conformance-locked.
 4. Model-card registry + practical model-card support is implemented with deterministic diagnostics and provenance.
@@ -615,11 +660,12 @@ Phase 3 is complete only when all core criteria are true:
 6. Phase 3 conformance matrix and coverage report are present and passing.
 7. Existing Phase 2 governance and CI category enforcement remain intact.
 8. Any frozen-artifact changes introduced in Phase 3 are fully governed.
+9. Loader temporary exclusions are fully closed at Phase 3 closure: `docs/dev/p3_loader_temporary_exclusions.yaml` is absent or schema-valid empty; no remaining in-scope v4 loader exclusions are permitted at closure.
 
 Conditional criteria (only if activated):
 
-9. CCCS/CCVS track is fully implemented and governed.
-10. Mutual inductance track is fully implemented and governed.
+10. CCCS/CCVS track is fully implemented and governed.
+11. Mutual inductance track is fully implemented and governed.
 
 ---
 
