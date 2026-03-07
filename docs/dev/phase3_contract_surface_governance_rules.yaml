@@ -1,0 +1,250 @@
+{
+  "schema_version": 1,
+  "phase3_contract_surface_rules": [
+    {
+      "surface_id": "optional_track_activation_contract",
+      "label": "Optional-track activation contract and policy artifacts",
+      "detection": [
+        {"path_glob": "docs/dev/optional_track_activation.yaml"},
+        {"path_glob": "docs/dev/optional_track_activation_schema_v1.json"},
+        {"path_glob": "docs/dev/optional_track_activation_policy.md"}
+      ],
+      "required_evidence": [
+        "policy_docs",
+        "schema_artifacts",
+        "conformance_updates",
+        "ci_enforcement",
+        "process_traceability"
+      ],
+      "required_artifact_paths": {
+        "policy_docs": [
+          "docs/dev/optional_track_activation_policy.md"
+        ],
+        "schema_artifacts": [
+          "docs/dev/optional_track_activation_schema_v1.json"
+        ],
+        "conformance_updates": [
+          "tests/conformance/test_phase3_gate_conformance.py"
+        ],
+        "ci_enforcement": [
+          ".github/workflows/ci.yml"
+        ],
+        "process_traceability": [
+          "docs/dev/phase3_process_traceability.md"
+        ]
+      }
+    },
+    {
+      "surface_id": "phase3_governance_bootstrap",
+      "label": "Phase 3 gate/bootstrap governance artifacts and CI integration",
+      "detection": [
+        {"path_glob": "docs/dev/phase3_gate.md"},
+        {"path_glob": "docs/dev/phase3_process_traceability.md"},
+        {"path_glob": "docs/dev/phase3_change_surface.yaml"},
+        {"path_glob": "docs/dev/phase3_change_surface_schema_v1.json"},
+        {"path_glob": "docs/dev/phase3_change_surface_policy.md"},
+        {"path_glob": "docs/dev/phase3_contract_surface_governance_rules.yaml"},
+        {"path_glob": "src/rfmna/governance/phase3_gate.py"},
+        {"path_glob": "tests/conformance/test_phase3_gate_conformance.py"},
+        {
+          "path_glob": ".github/workflows/ci.yml",
+          "line_tokens_any": [
+            "Phase 3 contract-surface governance sub-gate (blocking)",
+            "Phase 3 anti-tamper sub-gate (blocking)",
+            "Phase 3 optional-track activation sub-gate (blocking)",
+            "Phase 3 gate status (informational)",
+            "phase3-gate-status",
+            "RFMNA_PHASE3_GOV_BASE",
+            "RFMNA_PHASE3_GOV_HEAD",
+            "python -m rfmna.governance.phase3_gate",
+            "--sub-gate contract-surface",
+            "--sub-gate anti-tamper",
+            "--sub-gate optional-track",
+            "--base-ref \"$RFMNA_PHASE3_GOV_BASE\"",
+            "--head-ref \"$RFMNA_PHASE3_GOV_HEAD\"",
+            "phase3_contract_surface_subgate_status.txt",
+            "phase3_anti_tamper_subgate_status.txt",
+            "phase3_optional_track_subgate_status.txt",
+            "phase3_gate_status.txt",
+            "docs/dev/phase3_process_traceability.md",
+            "Phase 3 governance requires a non-empty base ref.",
+            "Phase 3 governance base ref is unresolvable:",
+            "Phase 3 governance head ref is unresolvable:",
+            "git rev-parse --verify --quiet \"${gov_base}^{commit}\" >/dev/null",
+            "git rev-parse --verify --quiet \"${{ github.sha }}^{commit}\" >/dev/null"
+          ]
+        }
+      ],
+      "required_evidence": [
+        "policy_docs",
+        "schema_artifacts",
+        "conformance_updates",
+        "ci_enforcement",
+        "process_traceability"
+      ],
+      "required_artifact_paths": {
+        "policy_docs": [
+          "docs/dev/phase3_change_surface_policy.md",
+          "docs/dev/phase3_gate.md"
+        ],
+        "schema_artifacts": [
+          "docs/dev/phase3_change_surface_schema_v1.json"
+        ],
+        "conformance_updates": [
+          "tests/conformance/test_phase3_gate_conformance.py"
+        ],
+        "ci_enforcement": [
+          ".github/workflows/ci.yml"
+        ],
+        "process_traceability": [
+          "docs/dev/phase3_process_traceability.md"
+        ]
+      }
+    }
+  ],
+  "canonical_policy_requirements": [
+    {
+      "path": "docs/dev/phase3_change_surface_policy.md",
+      "required_fragments": [
+        "declared_surface_ids",
+        "Required evidence keys are determined by the touched surface rule",
+        "docs/dev/change_scope.yaml"
+      ]
+    },
+    {
+      "path": "docs/dev/optional_track_activation_policy.md",
+      "required_fragments": [
+        "Freshness window: `90` days inclusive",
+        "Touching optional-track scope while the track remains deferred is merge-blocking",
+        "Comparison anchor:"
+      ]
+    }
+  ],
+  "canonical_schema_requirements": [
+    {
+      "path": "docs/dev/phase3_change_surface_schema_v1.json",
+      "title": "Phase 3 Change Surface Declaration",
+      "required_fields": [
+        "schema_version",
+        "declared_surface_ids",
+        "evidence"
+      ],
+      "required_properties": [
+        "schema_version",
+        "declared_surface_ids",
+        "evidence",
+        "notes"
+      ]
+    },
+    {
+      "path": "docs/dev/optional_track_activation_schema_v1.json",
+      "title": "Optional Track Activation Evidence",
+      "required_fields": [
+        "schema_version",
+        "tracks"
+      ],
+      "required_properties": [
+        "schema_version",
+        "tracks",
+        "notes"
+      ]
+    }
+  ],
+  "optional_track_policy": {
+    "freshness_window_days": 90,
+    "usage_evidence_date_format": "YYYY-MM-DD",
+    "required_approval_status": "approved"
+  },
+  "optional_track_rules": [
+    {
+      "track_id": "p3_10_cccs_ccvs",
+      "label": "P3-10 CCCS/CCVS optional extension",
+      "activation_key": "p3_10_cccs_ccvs",
+      "touch_detection": [
+        {"path_glob": "src/rfmna/elements/cccs.py"},
+        {"path_glob": "src/rfmna/elements/ccvs.py"},
+        {
+          "path_glob": "src/rfmna/elements/controlled.py",
+          "line_tokens_any": ["cccs", "ccvs"]
+        },
+        {
+          "path_glob": "src/rfmna/elements/factory.py",
+          "line_tokens_any": ["cccs", "ccvs"]
+        },
+        {
+          "path_glob": "src/rfmna/elements/__init__.py",
+          "line_tokens_any": ["cccs", "ccvs"]
+        },
+        {"path_glob": "src/rfmna/parser/cccs.py"},
+        {"path_glob": "src/rfmna/parser/ccvs.py"},
+        {
+          "path_glob": "src/rfmna/parser/__init__.py",
+          "line_tokens_any": ["cccs", "ccvs"]
+        },
+        {
+          "path_glob": "src/rfmna/parser/preflight.py",
+          "line_tokens_any": ["cccs", "ccvs"]
+        },
+        {"path_glob": "tests/unit/test_elements_cccs.py"},
+        {"path_glob": "tests/unit/test_elements_ccvs.py"},
+        {
+          "path_glob": "tests/unit/test_elements_factory.py",
+          "line_tokens_any": ["cccs", "ccvs"]
+        },
+        {"path_glob": "tests/conformance/test_cccs_ccvs_conformance.py"},
+        {"path_glob": "tests/regression/test_cccs_ccvs_regression.py"}
+      ],
+      "allowed_usage_evidence_types": [
+        "design_bundle_fixture",
+        "notebook_workflow",
+        "usage_request_record"
+      ]
+    },
+    {
+      "track_id": "p3_11_mutual_inductance",
+      "label": "P3-11 mutual inductance optional extension",
+      "activation_key": "p3_11_mutual_inductance",
+      "touch_detection": [
+        {"path_glob": "src/rfmna/elements/mutual_inductance.py"},
+        {"path_glob": "src/rfmna/elements/coupled_inductor.py"},
+        {
+          "path_glob": "src/rfmna/elements/inductor.py",
+          "line_tokens_any": ["mutual_inductance", "coupled_inductor"]
+        },
+        {
+          "path_glob": "src/rfmna/elements/factory.py",
+          "line_tokens_any": ["mutual_inductance", "coupled_inductor"]
+        },
+        {
+          "path_glob": "src/rfmna/elements/__init__.py",
+          "line_tokens_any": ["mutual_inductance", "coupled_inductor"]
+        },
+        {"path_glob": "src/rfmna/parser/mutual_inductance.py"},
+        {"path_glob": "src/rfmna/parser/coupled_inductor.py"},
+        {
+          "path_glob": "src/rfmna/parser/__init__.py",
+          "line_tokens_any": ["mutual_inductance", "coupled_inductor"]
+        },
+        {
+          "path_glob": "src/rfmna/parser/preflight.py",
+          "line_tokens_any": ["mutual_inductance", "coupled_inductor"]
+        },
+        {"path_glob": "tests/unit/test_elements_mutual_inductance.py"},
+        {"path_glob": "tests/unit/test_elements_coupled_inductor.py"},
+        {
+          "path_glob": "tests/unit/test_elements_factory.py",
+          "line_tokens_any": ["mutual_inductance", "coupled_inductor"]
+        },
+        {"path_glob": "tests/conformance/test_mutual_inductance_conformance.py"},
+        {"path_glob": "tests/regression/test_mutual_inductance_regression.py"},
+        {"path_glob": "tests/cross_check/test_mutual_inductance_cross_check.py"},
+        {"path_glob": "tests/cross_check/test_coupled_inductor_cross_check.py"}
+      ],
+      "allowed_usage_evidence_types": [
+        "design_bundle_fixture",
+        "notebook_workflow",
+        "usage_request_record"
+      ]
+    }
+  ]
+}

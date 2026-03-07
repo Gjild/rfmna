@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "docs/dev/phase3_change_surface_schema_v1.json",
+  "title": "Phase 3 Change Surface Declaration",
+  "type": "object",
+  "required": ["schema_version", "declared_surface_ids", "evidence"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "declared_surface_ids": {
+      "oneOf": [
+        {"const": "none"},
+        {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "policy_docs",
+        "schema_artifacts",
+        "conformance_updates",
+        "ci_enforcement",
+        "process_traceability"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "policy_docs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "schema_artifacts": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "conformance_updates": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "ci_enforcement": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "process_traceability": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "notes": {"type": "string"}
+  }
+}

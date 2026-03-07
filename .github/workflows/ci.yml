@@ -50,6 +50,30 @@ jobs:
           echo "RFMNA_GOV_BASE=$gov_base" >> "$GITHUB_ENV"
           echo "RFMNA_GOV_HEAD=${{ github.sha }}" >> "$GITHUB_ENV"
 
+      - name: Resolve Phase 3 governance diff range
+        shell: bash
+        run: |
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            gov_base="${{ github.event.pull_request.base.sha }}"
+          else
+            gov_base="${{ github.event.before }}"
+          fi
+          if [ -z "$gov_base" ] || [ "$gov_base" = "$ZERO_SHA" ]; then
+            echo "Phase 3 governance requires a non-empty base ref."
+            exit 1
+          fi
+          if ! git rev-parse --verify --quiet "${gov_base}^{commit}" >/dev/null; then
+            echo "Phase 3 governance base ref is unresolvable: $gov_base"
+            exit 1
+          fi
+          if ! git rev-parse --verify --quiet "${{ github.sha }}^{commit}" >/dev/null; then
+            echo "Phase 3 governance head ref is unresolvable: ${{ github.sha }}"
+            exit 1
+          fi
+          echo "RFMNA_PHASE3_GOV_BASE=$gov_base" >> "$GITHUB_ENV"
+          echo "RFMNA_PHASE3_GOV_HEAD=${{ github.sha }}" >> "$GITHUB_ENV"
+
       - name: Phase 2 governance sub-gate (blocking)
         run: |
           uv run python -m rfmna.governance.phase2_gate \
@@ -71,6 +95,30 @@ jobs:
             echo "Open a separate governance-labeled task/PR to resolve policy drift; do not bundle AGENTS.md edits into P2-09 implementation changes."
             exit 1
           fi
+
+      - name: Phase 3 contract-surface governance sub-gate (blocking)
+        run: |
+          uv run python -m rfmna.governance.phase3_gate \
+            --sub-gate contract-surface \
+            --base-ref "$RFMNA_PHASE3_GOV_BASE" \
+            --head-ref "$RFMNA_PHASE3_GOV_HEAD" \
+            --report-file phase3_contract_surface_subgate_status.txt
+
+      - name: Phase 3 anti-tamper sub-gate (blocking)
+        run: |
+          uv run python -m rfmna.governance.phase3_gate \
+            --sub-gate anti-tamper \
+            --base-ref "$RFMNA_PHASE3_GOV_BASE" \
+            --head-ref "$RFMNA_PHASE3_GOV_HEAD" \
+            --report-file phase3_anti_tamper_subgate_status.txt
+
+      - name: Phase 3 optional-track activation sub-gate (blocking)
+        run: |
+          uv run python -m rfmna.governance.phase3_gate \
+            --sub-gate optional-track \
+            --base-ref "$RFMNA_PHASE3_GOV_BASE" \
+            --head-ref "$RFMNA_PHASE3_GOV_HEAD" \
+            --report-file phase3_optional_track_subgate_status.txt
 
       - name: Prepare test report directory
         run: mkdir -p test-reports
@@ -203,4 +251,52 @@ jobs:
             phase2_governance_subgate_status.txt
             phase2_category_bootstrap_subgate_status.txt
             docs/dev/phase2_gate.md
+          if-no-files-found: warn
+
+      - name: Phase 3 gate status (informational)
+        if: ${{ always() }}
+        run: |
+          echo "task=P3-00"
+          echo "checklist=docs/dev/phase3_gate.md"
+          echo "traceability=docs/dev/phase3_process_traceability.md"
+          if test -f docs/dev/phase3_gate.md; then
+            echo "checklist_status=present"
+            sed -n '1,260p' docs/dev/phase3_gate.md
+          else
+            echo "checklist_status=missing"
+          fi
+          if test -f docs/dev/phase3_process_traceability.md; then
+            echo "traceability_status=present"
+            sed -n '1,220p' docs/dev/phase3_process_traceability.md
+          else
+            echo "traceability_status=missing"
+          fi
+          {
+            echo "task=P3-00"
+            echo "checklist=docs/dev/phase3_gate.md"
+            echo "traceability=docs/dev/phase3_process_traceability.md"
+            if test -f docs/dev/phase3_gate.md; then
+              echo "checklist_status=present"
+            else
+              echo "checklist_status=missing"
+            fi
+            if test -f docs/dev/phase3_process_traceability.md; then
+              echo "traceability_status=present"
+            else
+              echo "traceability_status=missing"
+            fi
+          } > phase3_gate_status.txt
+
+      - name: Upload Phase 3 gate status (informational)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-gate-status
+          path: |
+            phase3_gate_status.txt
+            phase3_contract_surface_subgate_status.txt
+            phase3_anti_tamper_subgate_status.txt
+            phase3_optional_track_subgate_status.txt
+            docs/dev/phase3_gate.md
+            docs/dev/phase3_process_traceability.md
           if-no-files-found: warn

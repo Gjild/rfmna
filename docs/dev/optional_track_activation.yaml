@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "tracks": [
+    {
+      "track_id": "p3_10_cccs_ccvs",
+      "state": "deferred",
+      "usage_evidence_source": null,
+      "usage_evidence_date": null,
+      "activation_rationale": "Deferred by default until usage evidence and approval are recorded.",
+      "impacted_frozen_ids": [],
+      "approval_record": null
+    },
+    {
+      "track_id": "p3_11_mutual_inductance",
+      "state": "deferred",
+      "usage_evidence_source": null,
+      "usage_evidence_date": null,
+      "activation_rationale": "Deferred by default until usage evidence and approval are recorded.",
+      "impacted_frozen_ids": [],
+      "approval_record": null
+    }
+  ],
+  "notes": "Default deferred state per docs/dev/phase3_backlog.md Section 6. Activation requires schema-valid evidence and matching change_scope frozen-ID declaration."
+}

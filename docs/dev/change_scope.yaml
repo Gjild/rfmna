@@ -8,5 +8,5 @@
     "migration_notes": [],
     "reproducibility_impact_statement_path": null
   },
-  "notes": "P2-11 syncs implemented-surface documentation (README status/validation commands and new docs/dev/phase2_usage.md) with explicit executable evidence nodeids, plus conformance guard coverage for non-aspirational doc claims. Scope excludes frozen artifacts."
+  "notes": "P3-00 bootstraps the Phase 3 governance gate, anti-tamper checks, optional-track activation policy, and CI status/blocking hooks. Scope excludes frozen artifacts and keeps Phase 2 blockers intact."
 }

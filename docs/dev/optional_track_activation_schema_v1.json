@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "docs/dev/optional_track_activation_schema_v1.json",
+  "title": "Optional Track Activation Evidence",
+  "type": "object",
+  "required": ["schema_version", "tracks"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "tracks": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "track_id",
+          "state",
+          "usage_evidence_source",
+          "usage_evidence_date",
+          "activation_rationale",
+          "impacted_frozen_ids",
+          "approval_record"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "track_id": {"type": "string", "minLength": 1},
+          "state": {"enum": ["deferred", "activated"]},
+          "usage_evidence_source": {
+            "oneOf": [
+              {"type": "null"},
+              {
+                "type": "object",
+                "required": ["evidence_type", "reference"],
+                "additionalProperties": false,
+                "properties": {
+                  "evidence_type": {"type": "string", "minLength": 1},
+                  "reference": {"type": "string", "minLength": 1}
+                }
+              }
+            ]
+          },
+          "usage_evidence_date": {
+            "oneOf": [
+              {"type": "null"},
+              {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}
+            ]
+          },
+          "activation_rationale": {"type": "string", "minLength": 1},
+          "impacted_frozen_ids": {
+            "type": "array",
+            "items": {"type": "integer", "minimum": 1, "maximum": 12},
+            "uniqueItems": true
+          },
+          "approval_record": {
+            "oneOf": [
+              {"type": "null"},
+              {
+                "type": "object",
+                "required": ["status", "approved_by", "decision_date", "decision_ref"],
+                "additionalProperties": false,
+                "properties": {
+                  "status": {"const": "approved"},
+                  "approved_by": {"type": "string", "minLength": 1},
+                  "decision_date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+                  "decision_ref": {"type": "string", "minLength": 1}
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "notes": {"type": "string"}
+  }
+}
