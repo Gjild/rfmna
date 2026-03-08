@@ -57,7 +57,7 @@ _PHASE3_CHANGE_SURFACE_EVIDENCE_KEYS: Final[tuple[str, ...]] = (
 _PHASE3_ALLOWED_EVIDENCE_ITEMS: Final[set[str]] = set(_PHASE3_CHANGE_SURFACE_EVIDENCE_KEYS)
 _PHASE3_EVIDENCE_ALLOWED_PREFIXES: Final[dict[str, tuple[str, ...]]] = {
     "policy_docs": ("docs/dev/",),
-    "schema_artifacts": ("docs/dev/",),
+    "schema_artifacts": ("docs/dev/", "docs/spec/schemas/"),
     "conformance_updates": ("tests/conformance/",),
     "ci_enforcement": (".github/workflows/",),
     "process_traceability": ("docs/dev/",),
@@ -74,11 +74,15 @@ _PHASE3_GATE_DOC: Final[str] = "docs/dev/phase3_gate.md"
 _PHASE3_PROCESS_TRACEABILITY_DOC: Final[str] = "docs/dev/phase3_process_traceability.md"
 _PHASE3_CHANGE_SURFACE_SCHEMA_DOC: Final[str] = "docs/dev/phase3_change_surface_schema_v1.json"
 _OPTIONAL_TRACK_SCHEMA_DOC: Final[str] = "docs/dev/optional_track_activation_schema_v1.json"
+_DESIGN_BUNDLE_SCHEMA_DOC: Final[str] = "docs/spec/schemas/design_bundle_v1.json"
+_LOADER_TEMP_EXCLUSIONS_SCHEMA_DOC: Final[str] = "docs/dev/p3_loader_temporary_exclusions_schema_v1.json"
 _REQUIRED_CANONICAL_POLICY_PATHS: Final[tuple[str, ...]] = (
     _PHASE3_POLICY_DOC,
     _OPTIONAL_TRACK_POLICY_DOC,
 )
 _REQUIRED_CANONICAL_SCHEMA_PATHS: Final[tuple[str, ...]] = (
+    _DESIGN_BUNDLE_SCHEMA_DOC,
+    _LOADER_TEMP_EXCLUSIONS_SCHEMA_DOC,
     _PHASE3_CHANGE_SURFACE_SCHEMA_DOC,
     _OPTIONAL_TRACK_SCHEMA_DOC,
 )
@@ -120,6 +124,7 @@ class Phase3ContractSurfaceRule:
     surface_id: str
     label: str
     detection: tuple[DetectionPattern, ...]
+    touch_paths: tuple[str, ...]
     required_evidence: tuple[str, ...]
     required_artifact_paths: dict[str, tuple[str, ...]]
 
@@ -216,6 +221,7 @@ class StrictGitRefs:
 class _RuleTableParseContext:
     source: str
     frozen_rules: Mapping[int, FrozenRule] | None
+    required_canonical_schema_paths: tuple[str, ...] | None
 
 
 def _line_matches_detection(*, line: str, token: str) -> bool:
@@ -416,6 +422,7 @@ def _merge_surface_rules(
             surface_id=surface_id,
             label=baseline_rule.label,
             detection=_dedupe_detection_patterns(baseline_rule.detection + current_rule.detection),
+            touch_paths=tuple(sorted(set(baseline_rule.touch_paths) | set(current_rule.touch_paths))),
             required_evidence=tuple(
                 sorted(set(baseline_rule.required_evidence) | set(current_rule.required_evidence))
             ),
@@ -554,15 +561,59 @@ def derive_touched_phase3_surface_ids(
     changed_lines_by_path: dict[str, tuple[str, ...]],
     rules: dict[str, Phase3ContractSurfaceRule],
 ) -> tuple[str, ...]:
+    return _derive_touched_phase3_surface_ids(
+        changed_paths=changed_paths,
+        changed_lines_by_path=changed_lines_by_path,
+        rules=rules,
+        include_touch_paths=True,
+        include_required_artifact_paths=True,
+    )
+
+
+def _derive_touched_phase3_surface_ids(
+    *,
+    changed_paths: tuple[str, ...],
+    changed_lines_by_path: dict[str, tuple[str, ...]],
+    rules: dict[str, Phase3ContractSurfaceRule],
+    include_touch_paths: bool,
+    include_required_artifact_paths: bool,
+) -> tuple[str, ...]:
     touched: list[str] = []
     for rule_id, rule in sorted(rules.items()):
         if _detections_match(
             changed_paths=changed_paths,
             changed_lines_by_path=changed_lines_by_path,
             detections=rule.detection,
+        ) or (
+            include_touch_paths
+            and _touch_paths_touched(changed_paths=changed_paths, rule=rule)
+        ) or (
+            include_required_artifact_paths
+            and _required_artifact_paths_touched(changed_paths=changed_paths, rule=rule)
         ):
             touched.append(rule_id)
     return tuple(touched)
+
+
+def _touch_paths_touched(
+    *,
+    changed_paths: tuple[str, ...],
+    rule: Phase3ContractSurfaceRule,
+) -> bool:
+    return any(path in rule.touch_paths for path in changed_paths)
+
+
+def _required_artifact_paths_touched(
+    *,
+    changed_paths: tuple[str, ...],
+    rule: Phase3ContractSurfaceRule,
+) -> bool:
+    required_paths = {
+        path
+        for paths in rule.required_artifact_paths.values()
+        for path in paths
+    }
+    return any(path in required_paths for path in changed_paths)
 
 
 def derive_touched_optional_track_ids(
@@ -620,6 +671,12 @@ def _parse_phase3_required_evidence(value: object, *, field_name: str) -> tuple[
             raise ValueError(f"{field_name} contains unsupported evidence key: {entry}")
         items.append(entry)
     return tuple(sorted(set(items)))
+
+
+def _parse_phase3_touch_paths(value: object, *, field_name: str) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    return tuple(sorted(set(_coerce_string_sequence(value, field_name=field_name))))
 
 
 def _parse_phase3_required_artifact_paths(
@@ -701,6 +758,15 @@ def _validate_phase3_rule_overlap_against_frozen_rules(
                             "phase3 contract surface rule overlaps frozen detection surface: "
                             f"{surface_id} -> {detection.path_glob} ({source})"
                         )
+                for touch_path in surface_rule.touch_paths:
+                    if _detections_overlap(
+                        DetectionPattern(path_glob=touch_path, line_tokens_any=()),
+                        frozen_detection,
+                    ):
+                        raise ValueError(
+                            "phase3 contract surface touch_path overlaps frozen detection surface: "
+                            f"{surface_id} -> {touch_path} ({source})"
+                        )
 
 
 def _parse_canonical_policy_requirements(
@@ -739,6 +805,7 @@ def _parse_canonical_schema_requirements(
     value: object,
     *,
     source: str,
+    required_paths: tuple[str, ...] | None,
 ) -> dict[str, CanonicalSchemaRequirement]:
     if not isinstance(value, list) or not value:
         raise ValueError("canonical_schema_requirements must be a non-empty list")
@@ -768,10 +835,10 @@ def _parse_canonical_schema_requirements(
                 field_name=f"canonical_schema_requirements[{path}].required_fields",
             ),
         )
-    if set(requirements) != set(_REQUIRED_CANONICAL_SCHEMA_PATHS):
+    if required_paths is not None and set(requirements) != set(required_paths):
         raise ValueError(
             "canonical_schema_requirements must declare each canonical schema path exactly once: "
-            + ", ".join(_REQUIRED_CANONICAL_SCHEMA_PATHS)
+            + ", ".join(required_paths)
             + f" ({source})"
         )
     return requirements
@@ -812,6 +879,10 @@ def _load_phase3_rule_table_payload(  # noqa: PLR0912,PLR0915
                 entry.get("detection"),
                 field_name=f"phase3_contract_surface_rules[{surface_id}].detection",
             ),
+            touch_paths=_parse_phase3_touch_paths(
+                entry.get("touch_paths"),
+                field_name=f"phase3_contract_surface_rules[{surface_id}].touch_paths",
+            ),
             required_evidence=required_evidence,
             required_artifact_paths=_parse_phase3_required_artifact_paths(
                 entry.get("required_artifact_paths"),
@@ -832,6 +903,7 @@ def _load_phase3_rule_table_payload(  # noqa: PLR0912,PLR0915
     schema_requirements = _parse_canonical_schema_requirements(
         payload.get("canonical_schema_requirements"),
         source=parse_context.source,
+        required_paths=parse_context.required_canonical_schema_paths,
     )
 
     raw_optional_policy = payload.get("optional_track_policy")
@@ -900,7 +972,11 @@ def _load_phase3_rule_table(
 ) -> Phase3RuleTableData:
     return _load_phase3_rule_table_payload(
         _load_structured_dict(path),
-        parse_context=_RuleTableParseContext(source=path.as_posix(), frozen_rules=frozen_rules),
+        parse_context=_RuleTableParseContext(
+            source=path.as_posix(),
+            frozen_rules=frozen_rules,
+            required_canonical_schema_paths=_REQUIRED_CANONICAL_SCHEMA_PATHS,
+        ),
     )
 
 
@@ -918,6 +994,7 @@ def _load_phase3_rule_table_from_git_ref(
         parse_context=_RuleTableParseContext(
             source=f"{ref}:{rel_path}",
             frozen_rules=frozen_rules,
+            required_canonical_schema_paths=None,
         ),
     )
 
@@ -1465,6 +1542,15 @@ def _validate_contract_surface_cross_consistency(  # noqa: PLR0913
         )
         if not path_surface_ids:
             continue
+        path_surface_detection_ids = _derive_touched_phase3_surface_ids(
+            changed_paths=(path,),
+            changed_lines_by_path=lines_for_path,
+            rules=surface_rules,
+            include_touch_paths=False,
+            include_required_artifact_paths=False,
+        )
+        if not path_surface_detection_ids:
+            continue
         path_frozen_ids = derive_touched_frozen_ids(
             changed_paths=(path,),
             changed_lines_by_path=lines_for_path,
@@ -1591,6 +1677,8 @@ def _detect_surface_rule_relaxations(
             errors.append(f"phase3 rule table weakens required_evidence for surface: {surface_id}")
         if not set(current_surface_rule.detection).issuperset(baseline_surface_rule.detection):
             errors.append(f"phase3 rule table weakens detection for surface: {surface_id}")
+        if not set(current_surface_rule.touch_paths).issuperset(baseline_surface_rule.touch_paths):
+            errors.append(f"phase3 rule table weakens touch_paths for surface: {surface_id}")
         for evidence_key, baseline_paths in baseline_surface_rule.required_artifact_paths.items():
             current_paths = current_surface_rule.required_artifact_paths.get(evidence_key, ())
             if not set(current_paths).issuperset(baseline_paths):

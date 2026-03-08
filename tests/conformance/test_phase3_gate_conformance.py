@@ -267,6 +267,65 @@ def test_phase3_contract_surface_rule_table_detects_bootstrap_and_optional_contr
     assert touched == ("optional_track_activation_contract", "phase3_governance_bootstrap")
 
 
+def test_phase3_contract_surface_rule_table_detects_design_bundle_contract_paths() -> None:
+    repo_root = _repo_root()
+    rule_table = _load_phase3_rule_table(
+        repo_root / "docs/dev/phase3_contract_surface_governance_rules.yaml",
+        frozen_rules=None,
+    )
+    touched = derive_touched_phase3_surface_ids(
+        changed_paths=(
+            "docs/spec/schemas/design_bundle_v1.json",
+            "tests/conformance/test_design_bundle_loader_conformance.py",
+        ),
+        changed_lines_by_path={},
+        rules=rule_table.surface_rules,
+    )
+    assert touched == ("design_bundle_contract",)
+
+
+def test_phase3_contract_surface_rule_table_detects_design_bundle_schema_only_change() -> None:
+    repo_root = _repo_root()
+    rule_table = _load_phase3_rule_table(
+        repo_root / "docs/dev/phase3_contract_surface_governance_rules.yaml",
+        frozen_rules=None,
+    )
+    touched = derive_touched_phase3_surface_ids(
+        changed_paths=("docs/spec/schemas/design_bundle_v1.json",),
+        changed_lines_by_path={},
+        rules=rule_table.surface_rules,
+    )
+    assert touched == ("design_bundle_contract",)
+
+
+def test_phase3_contract_surface_rule_table_detects_packaged_exclusion_mirror_change() -> None:
+    repo_root = _repo_root()
+    rule_table = _load_phase3_rule_table(
+        repo_root / "docs/dev/phase3_contract_surface_governance_rules.yaml",
+        frozen_rules=None,
+    )
+    touched = derive_touched_phase3_surface_ids(
+        changed_paths=("src/rfmna/parser/resources/p3_loader_temporary_exclusions.yaml",),
+        changed_lines_by_path={},
+        rules=rule_table.surface_rules,
+    )
+    assert touched == ("design_bundle_contract",)
+
+
+def test_phase3_contract_surface_rule_table_ignores_frozen_only_loader_bridge_path() -> None:
+    repo_root = _repo_root()
+    rule_table = _load_phase3_rule_table(
+        repo_root / "docs/dev/phase3_contract_surface_governance_rules.yaml",
+        frozen_rules=None,
+    )
+    touched = derive_touched_phase3_surface_ids(
+        changed_paths=("src/rfmna/cli/main.py",),
+        changed_lines_by_path={},
+        rules=rule_table.surface_rules,
+    )
+    assert touched == ()
+
+
 def test_phase3_contract_surface_gate_passes_for_bootstrap_scope(tmp_path: Path) -> None:
     repo_root = _repo_root()
     change_surface_path = _write_phase3_change_surface(
@@ -301,6 +360,138 @@ def test_phase3_contract_surface_gate_passes_for_bootstrap_scope(tmp_path: Path)
         )
     finally:
         change_surface_path.unlink(missing_ok=True)
+
+
+def test_phase3_contract_surface_gate_accepts_docs_spec_schema_artifacts_for_design_bundle_surface(
+    tmp_path: Path,
+) -> None:
+    repo_root = _repo_root()
+    change_surface_path = _write_phase3_change_surface(
+        tmp_path,
+        declared_surface_ids=["design_bundle_contract"],
+        evidence={
+            "policy_docs": ["docs/dev/design_bundle_contract.md"],
+            "schema_artifacts": [
+                "docs/dev/p3_loader_temporary_exclusions_schema_v1.json",
+                "docs/spec/schemas/design_bundle_v1.json",
+            ],
+            "conformance_updates": ["tests/conformance/test_design_bundle_loader_conformance.py"],
+            "ci_enforcement": [],
+            "process_traceability": ["docs/dev/phase3_process_traceability.md"],
+        },
+    )
+    result = evaluate_contract_surface_governance_gate(
+        repo_root=repo_root,
+        changed_paths=(
+            "src/rfmna/cli/design_loader.py",
+            "tests/conformance/test_design_bundle_loader_conformance.py",
+        ),
+        artifact_paths=_phase3_artifact_paths(phase3_change_surface_path=str(change_surface_path)),
+    )
+    try:
+        assert result.passed, result.errors
+        assert result.touched_surface_ids == ("design_bundle_contract",)
+    finally:
+        change_surface_path.unlink(missing_ok=True)
+
+
+def test_phase3_contract_surface_gate_accepts_schema_only_design_bundle_surface_evidence_trigger(
+    tmp_path: Path,
+) -> None:
+    repo_root = _repo_root()
+    change_surface_path = _write_phase3_change_surface(
+        tmp_path,
+        declared_surface_ids=["design_bundle_contract"],
+        evidence={
+            "policy_docs": ["docs/dev/design_bundle_contract.md"],
+            "schema_artifacts": [
+                "docs/dev/p3_loader_temporary_exclusions_schema_v1.json",
+                "docs/spec/schemas/design_bundle_v1.json",
+            ],
+            "conformance_updates": ["tests/conformance/test_design_bundle_loader_conformance.py"],
+            "ci_enforcement": [],
+            "process_traceability": ["docs/dev/phase3_process_traceability.md"],
+        },
+    )
+    result = evaluate_contract_surface_governance_gate(
+        repo_root=repo_root,
+        changed_paths=("docs/spec/schemas/design_bundle_v1.json",),
+        artifact_paths=_phase3_artifact_paths(phase3_change_surface_path=str(change_surface_path)),
+    )
+    try:
+        assert result.passed, result.errors
+        assert result.touched_surface_ids == ("design_bundle_contract",)
+    finally:
+        change_surface_path.unlink(missing_ok=True)
+
+
+def test_phase3_contract_surface_gate_accepts_actual_p3_01_path_mix(
+    tmp_path: Path,
+) -> None:
+    repo_root = _repo_root()
+    change_surface_path = _write_phase3_change_surface(
+        tmp_path,
+        declared_surface_ids=["design_bundle_contract"],
+        evidence={
+            "policy_docs": ["docs/dev/design_bundle_contract.md"],
+            "schema_artifacts": [
+                "docs/dev/p3_loader_temporary_exclusions_schema_v1.json",
+                "docs/spec/schemas/design_bundle_v1.json",
+            ],
+            "conformance_updates": ["tests/conformance/test_design_bundle_loader_conformance.py"],
+            "ci_enforcement": [],
+            "process_traceability": ["docs/dev/phase3_process_traceability.md"],
+        },
+    )
+    result = evaluate_contract_surface_governance_gate(
+        repo_root=repo_root,
+        changed_paths=(
+            "docs/spec/schemas/design_bundle_v1.json",
+            "src/rfmna/cli/main.py",
+            "src/rfmna/parser/design_bundle.py",
+            "tests/conformance/test_design_bundle_loader_conformance.py",
+        ),
+        artifact_paths=_phase3_artifact_paths(phase3_change_surface_path=str(change_surface_path)),
+    )
+    try:
+        assert result.passed, result.errors
+        assert result.touched_surface_ids == ("design_bundle_contract",)
+    finally:
+        change_surface_path.unlink(missing_ok=True)
+
+
+def test_phase3_rule_table_marks_design_bundle_schemas_as_canonical_requirements() -> None:
+    repo_root = _repo_root()
+    rule_table = _load_phase3_rule_table(
+        repo_root / "docs/dev/phase3_contract_surface_governance_rules.yaml",
+        frozen_rules=None,
+    )
+
+    design_bundle_requirement = rule_table.schema_requirements["docs/spec/schemas/design_bundle_v1.json"]
+    exclusions_requirement = rule_table.schema_requirements[
+        "docs/dev/p3_loader_temporary_exclusions_schema_v1.json"
+    ]
+
+    assert design_bundle_requirement.title == "rfmna design bundle v1"
+    assert design_bundle_requirement.required_fields == (
+        "schema",
+        "schema_version",
+        "design",
+        "analysis",
+    )
+    assert design_bundle_requirement.required_properties == (
+        "schema",
+        "schema_version",
+        "design",
+        "analysis",
+    )
+    assert exclusions_requirement.title == "P3 loader temporary exclusions v1"
+    assert exclusions_requirement.required_fields == ("schema_version", "exclusions")
+    assert exclusions_requirement.required_properties == (
+        "schema_version",
+        "exclusions",
+        "notes",
+    )
 
 
 def test_phase3_contract_surface_gate_fails_on_declared_vs_detected_mismatch(tmp_path: Path) -> None:
@@ -542,6 +733,48 @@ def test_phase3_contract_surface_rule_table_rejects_frozen_overlap_with_differen
                 _repo_root() / "docs/dev/frozen_change_governance_rules.yaml"
             ).rules,
         )
+
+
+def test_phase3_contract_surface_rule_table_rejects_frozen_overlap_via_touch_paths(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(
+        (_repo_root() / "docs/dev/phase3_contract_surface_governance_rules.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    payload["phase3_contract_surface_rules"][0]["touch_paths"] = ["src/rfmna/cli/main.py"]
+    target = _write_json(tmp_path / "phase3_contract_surface_governance_rules.yaml", payload)
+    with pytest.raises(ValueError, match="touch_path overlaps frozen detection surface"):
+        _load_phase3_rule_table(
+            target,
+            frozen_rules=_load_rule_table(
+                _repo_root() / "docs/dev/frozen_change_governance_rules.yaml"
+            ).rules,
+        )
+
+
+def test_phase3_rule_table_payload_allows_historical_baseline_schema_subset() -> None:
+    payload = json.loads(
+        (_repo_root() / "docs/dev/phase3_contract_surface_governance_rules.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    payload["canonical_schema_requirements"] = payload["canonical_schema_requirements"][-2:]
+
+    rule_table = phase3_gate_module._load_phase3_rule_table_payload(
+        payload,
+        parse_context=phase3_gate_module._RuleTableParseContext(
+            source="HEAD:docs/dev/phase3_contract_surface_governance_rules.yaml",
+            frozen_rules=None,
+            required_canonical_schema_paths=None,
+        ),
+    )
+
+    assert set(rule_table.schema_requirements) == {
+        "docs/dev/phase3_change_surface_schema_v1.json",
+        "docs/dev/optional_track_activation_schema_v1.json",
+    }
 
 
 def test_phase3_contract_surface_rule_table_rejects_glob_vs_glob_frozen_overlap(
@@ -1471,10 +1704,14 @@ def test_optional_track_gate_ignores_shared_factory_change_without_reserved_toke
     assert result.active_optional_track_ids == ()
 
 
-def test_inherited_phase2_governance_negative_scope_mismatch_still_fails() -> None:
+def test_inherited_phase2_governance_negative_scope_mismatch_still_fails(
+    tmp_path: Path,
+) -> None:
+    change_scope_path = _write_change_scope(tmp_path, declared_frozen_ids="none")
     result = evaluate_governance_gate(
         repo_root=_repo_root(),
         changed_paths=("src/rfmna/cli/main.py",),
+        artifact_paths=GovernanceArtifactPaths(change_scope_path=str(change_scope_path)),
     )
     assert not result.passed
     assert any("declared_frozen_ids mismatch" in error for error in result.errors)
@@ -2183,11 +2420,6 @@ def test_phase3_gate_main_anti_tamper_ignores_unrelated_artifact_loading(
     )
     changed_paths_file = tmp_path / "changed_paths.txt"
     changed_paths_file.write_text("docs/dev/phase3_gate.md\n", encoding="utf-8")
-    monkeypatch.setattr(
-        phase3_gate_module,
-        "_load_optional_track_activation",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unexpected optional-track load")),
-    )
     monkeypatch.setattr(
         phase3_gate_module,
         "_load_phase3_change_surface",

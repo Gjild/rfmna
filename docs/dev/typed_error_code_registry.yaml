@@ -46,7 +46,8 @@
       "family": "E_IR_*",
       "source_paths": [
         "src/rfmna/elements/factory.py",
-        "src/rfmna/elements/factory_models.py"
+        "src/rfmna/elements/factory_models.py",
+        "src/rfmna/parser/design_bundle.py"
       ],
       "diagnostic_equivalent_codes": [
         "E_IR_KIND_UNKNOWN"

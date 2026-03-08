@@ -2,7 +2,9 @@
   "schema_version": 1,
   "runtime_emission_paths": [
     "docs/spec/thresholds_v4_0_0.yaml",
+    "src/rfmna/cli/design_loader.py",
     "src/rfmna/cli/main.py",
+    "src/rfmna/parser/design_bundle.py",
     "src/rfmna/parser/preflight.py",
     "src/rfmna/rf_metrics/boundary.py",
     "src/rfmna/rf_metrics/impedance.py",
@@ -12,6 +14,10 @@
     "src/rfmna/solver/backend.py",
     "src/rfmna/solver/fallback.py",
     "src/rfmna/sweep_engine/run.py"
+  ],
+  "runtime_artifact_paths": [
+    "docs/dev/p3_loader_temporary_exclusions.yaml",
+    "src/rfmna/parser/resources/p3_loader_temporary_exclusions.yaml"
   ],
   "non_diagnostic_scoped_paths": [
     "src/rfmna/assembler/fill.py",
@@ -23,8 +29,16 @@
   "runtime_codes": [
     "E_CLI_CHECK_INTERNAL",
     "E_CLI_CHECK_LOADER_FAILED",
+    "E_CLI_DESIGN_EXCLUDED_CAPABILITY",
+    "E_CLI_DESIGN_EXCLUSION_POLICY_INVALID",
+    "E_CLI_DESIGN_PARSE_FAILED",
+    "E_CLI_DESIGN_READ_FAILED",
+    "E_CLI_DESIGN_SCHEMA_INVALID",
+    "E_CLI_DESIGN_SCHEMA_UNSUPPORTED",
+    "E_CLI_DESIGN_VALUE_INVALID",
     "E_CLI_RF_METRIC_INVALID",
     "E_CLI_RF_OPTIONS_INVALID",
+    "E_IR_KIND_UNKNOWN",
     "E_MODEL_PORT_Z0_COMPLEX",
     "E_MODEL_PORT_Z0_NONPOSITIVE",
     "E_NUM_IMPEDANCE_UNDEFINED",

@@ -27,9 +27,30 @@
       "label": "Port voltage/current and wave conventions",
       "detection": [
         {"path_glob": "docs/spec/port_wave_conventions_v4_0_0.md"},
+        {
+          "path_glob": "docs/spec/schemas/design_bundle_v1.json",
+          "line_tokens_any": ["\"port\": {", "\"p_plus\": {", "\"p_minus\": {", "\"z0_ohm\": {"]
+        },
         {"path_glob": "src/rfmna/rf_metrics/boundary.py"},
         {"path_glob": "src/rfmna/rf_metrics/s_params.py"},
-        {"path_glob": "src/rfmna/rf_metrics/impedance.py"}
+        {"path_glob": "src/rfmna/rf_metrics/impedance.py"},
+        {
+          "path_glob": "src/rfmna/cli/design_loader.py",
+          "line_tokens_any": [
+            "PortBoundary(",
+            "p_plus_index=indexing.node_index(port.p_plus),",
+            "p_minus_index=indexing.node_index(port.p_minus),"
+          ]
+        },
+        {
+          "path_glob": "src/rfmna/parser/design_bundle.py",
+          "line_tokens_any": [
+            "def _build_rf_port(",
+            "p_plus=port.p_plus,",
+            "p_minus=port.p_minus,",
+            "z0_ohm=z0_ohm,"
+          ]
+        }
       ]
     },
     {
@@ -71,7 +92,27 @@
       "label": "Frequency grammar and grid generation rules",
       "detection": [
         {"path_glob": "docs/spec/frequency_grid_and_sweep_rules_v4_0_0.md"},
-        {"path_glob": "src/rfmna/sweep_engine/frequency_grid.py"}
+        {
+          "path_glob": "docs/spec/schemas/design_bundle_v1.json",
+          "line_tokens_any": [
+            "\"frequency_value\": {",
+            "\"frequency_sweep\": {",
+            "\"Hz\"",
+            "\"kHz\"",
+            "\"MHz\"",
+            "\"GHz\""
+          ]
+        },
+        {"path_glob": "src/rfmna/sweep_engine/frequency_grid.py"},
+        {
+          "path_glob": "src/rfmna/parser/design_bundle.py",
+          "line_tokens_any": [
+            "def _parse_frequency_sweep(",
+            "def _parse_frequency_value(",
+            "allowed=(\"Hz\", \"kHz\", \"MHz\", \"GHz\")",
+            "return frequency_grid(sweep.mode, start_hz, stop_hz, sweep.points)"
+          ]
+        }
       ]
     },
     {
@@ -79,6 +120,14 @@
       "label": "CLI exit semantics and partial-sweep behavior",
       "detection": [
         {"path_glob": "docs/spec/v4_contract.md"},
+        {
+          "path_glob": "docs/spec/schemas/design_bundle_v1.json",
+          "line_tokens_any": [
+            "\"x-compatibility-policy\": {",
+            "\"active_default_version\":",
+            "highest-version inference"
+          ]
+        },
         {"path_glob": "src/rfmna/cli/main.py"}
       ]
     },
@@ -86,15 +135,46 @@
       "id": 10,
       "label": "Canonical API data shapes and ordering",
       "detection": [
+        {
+          "path_glob": "docs/spec/schemas/design_bundle_v1.json",
+          "line_tokens_any": [
+            "\"x-compatibility-policy\": {",
+            "\"breaking_changes\":",
+            "ordering semantics"
+          ]
+        },
         {"path_glob": "src/rfmna/sweep_engine/types.py"},
         {"path_glob": "src/rfmna/viz_io/rf_export.py"},
-        {"path_glob": "src/rfmna/viz_io/manifest.py"}
+        {"path_glob": "src/rfmna/viz_io/manifest.py"},
+        {
+          "path_glob": "src/rfmna/parser/design_bundle.py",
+          "line_tokens_any": [
+            "ports=rf_ports,",
+            "rf_ports=ir.ports,",
+            "rf_z0_ohm=_canonical_rf_z0(ir.ports),",
+            "def _canonical_rf_z0(ports: Sequence[IRPort]) -> float | tuple[float, ...]:"
+          ]
+        }
       ]
     },
     {
       "id": 11,
       "label": "Fail-point sentinel policy",
       "detection": [
+        {
+          "path_glob": "src/rfmna/cli/design_loader.py",
+          "line_tokens_any": [
+            "def assemble_point(point_index: int, frequency_hz: float)",
+            "filled = fill_numeric(pattern, stamps, ctx)",
+            "np.asarray(filled.b, dtype=np.complex128)"
+          ]
+        },
+        {
+          "path_glob": "src/rfmna/cli/main.py",
+          "line_tokens_any": [
+            "sweep_result = _run_solver(bundle)"
+          ]
+        },
         {"path_glob": "src/rfmna/sweep_engine/run.py"},
         {"path_glob": "src/rfmna/rf_metrics/y_params.py"},
         {"path_glob": "src/rfmna/rf_metrics/z_params.py"},

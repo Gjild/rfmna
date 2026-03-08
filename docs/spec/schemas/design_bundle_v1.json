@@ -1,0 +1,568 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "docs/spec/schemas/design_bundle_v1.json",
+  "title": "rfmna design bundle v1",
+  "description": "Deterministic input contract for `rfmna check <design>` and `rfmna run <design> --analysis ac`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "design",
+    "analysis"
+  ],
+  "properties": {
+    "schema": {
+      "const": "docs/spec/schemas/design_bundle_v1.json"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "design": {
+      "$ref": "#/$defs/design"
+    },
+    "analysis": {
+      "$ref": "#/$defs/analysis"
+    }
+  },
+  "$defs": {
+    "nonempty_string": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "scalar_token": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "$ref": "#/$defs/nonempty_string"
+        }
+      ]
+    },
+    "string_array": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nonempty_string"
+      }
+    },
+    "two_node_string_array": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/string_array"
+        },
+        {
+          "minItems": 2,
+          "maxItems": 2
+        }
+      ]
+    },
+    "four_node_string_array": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/string_array"
+        },
+        {
+          "minItems": 4,
+          "maxItems": 4
+        }
+      ]
+    },
+    "scalar_mapping": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "\\S"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar_token"
+      }
+    },
+    "accepted_element_kind_token": {
+      "type": "string",
+      "enum": [
+        "R",
+        "RES",
+        "RESISTOR",
+        "C",
+        "CAP",
+        "CAPACITOR",
+        "G",
+        "COND",
+        "CONDUCTANCE",
+        "L",
+        "IND",
+        "INDUCTOR",
+        "I",
+        "ISRC",
+        "CURRENT_SOURCE",
+        "V",
+        "VSRC",
+        "VOLTAGE_SOURCE",
+        "VCCS",
+        "E",
+        "VCVS",
+        "FD",
+        "FD_LINEAR",
+        "FREQ_DEP",
+        "FREQUENCY_DEPENDENT",
+        "FREQUENCY_DEPENDENT_LINEAR",
+        "COMPACT_LINEAR_FD",
+        "Y",
+        "YBLOCK",
+        "Y_BLOCK",
+        "Y1",
+        "Y1P",
+        "Y_1P",
+        "ONE_PORT_Y",
+        "ONE_PORT_Y_BLOCK",
+        "Y2",
+        "Y2P",
+        "Y_2P",
+        "TWO_PORT_Y",
+        "TWO_PORT_Y_BLOCK",
+        "Z",
+        "ZBLOCK",
+        "Z_BLOCK",
+        "Z1",
+        "Z1P",
+        "Z_1P",
+        "ONE_PORT_Z",
+        "ONE_PORT_Z_BLOCK",
+        "Z2",
+        "Z2P",
+        "Z_2P",
+        "TWO_PORT_Z",
+        "TWO_PORT_Z_BLOCK"
+      ]
+    },
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "nodes",
+        "params"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "kind": {
+          "$ref": "#/$defs/accepted_element_kind_token"
+        },
+        "nodes": {
+          "$ref": "#/$defs/string_array"
+        },
+        "params": {
+          "$ref": "#/$defs/scalar_mapping"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "R",
+                  "RES",
+                  "RESISTOR"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "nodes": {
+                "$ref": "#/$defs/two_node_string_array"
+              },
+              "params": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/scalar_mapping"
+                  },
+                  {
+                    "required": [
+                      "resistance_ohm"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "C",
+                  "CAP",
+                  "CAPACITOR"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "nodes": {
+                "$ref": "#/$defs/two_node_string_array"
+              },
+              "params": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/scalar_mapping"
+                  },
+                  {
+                    "required": [
+                      "capacitance_f"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "G",
+                  "COND",
+                  "CONDUCTANCE"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "nodes": {
+                "$ref": "#/$defs/two_node_string_array"
+              },
+              "params": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/scalar_mapping"
+                  },
+                  {
+                    "required": [
+                      "conductance_s"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "L",
+                  "IND",
+                  "INDUCTOR"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "nodes": {
+                "$ref": "#/$defs/two_node_string_array"
+              },
+              "params": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/scalar_mapping"
+                  },
+                  {
+                    "required": [
+                      "inductance_h"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "I",
+                  "ISRC",
+                  "CURRENT_SOURCE"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "nodes": {
+                "$ref": "#/$defs/two_node_string_array"
+              },
+              "params": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/scalar_mapping"
+                  },
+                  {
+                    "required": [
+                      "current_a"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "V",
+                  "VSRC",
+                  "VOLTAGE_SOURCE"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "nodes": {
+                "$ref": "#/$defs/two_node_string_array"
+              },
+              "params": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/scalar_mapping"
+                  },
+                  {
+                    "required": [
+                      "voltage_v"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "VCCS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "nodes": {
+                "$ref": "#/$defs/four_node_string_array"
+              },
+              "params": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/scalar_mapping"
+                  },
+                  {
+                    "required": [
+                      "transconductance_s"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "E",
+                  "VCVS"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "nodes": {
+                "$ref": "#/$defs/four_node_string_array"
+              },
+              "params": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/scalar_mapping"
+                  },
+                  {
+                    "required": [
+                      "gain_mu"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "p_plus",
+        "p_minus"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "p_plus": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "p_minus": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "z0_ohm": {
+          "$ref": "#/$defs/scalar_token"
+        }
+      }
+    },
+    "frequency_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "unit"
+      ],
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/scalar_token"
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "Hz",
+            "kHz",
+            "MHz",
+            "GHz"
+          ]
+        }
+      }
+    },
+    "frequency_sweep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "start",
+        "stop",
+        "points"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "linear",
+            "log"
+          ]
+        },
+        "start": {
+          "$ref": "#/$defs/frequency_value"
+        },
+        "stop": {
+          "$ref": "#/$defs/frequency_value"
+        },
+        "points": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "parameter_sweep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parameter",
+        "values"
+      ],
+      "properties": {
+        "parameter": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scalar_token"
+          }
+        }
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference_node",
+        "elements"
+      ],
+      "properties": {
+        "reference_node": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "nodes": {
+          "$ref": "#/$defs/string_array"
+        },
+        "parameters": {
+          "$ref": "#/$defs/scalar_mapping"
+        },
+        "elements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/element"
+          }
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/port"
+          }
+        }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "frequency_sweep"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "ac"
+        },
+        "frequency_sweep": {
+          "$ref": "#/$defs/frequency_sweep"
+        },
+        "parameter_sweeps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/parameter_sweep"
+          }
+        }
+      }
+    }
+  },
+  "x-compatibility-policy": {
+    "active_default_version": "v1 selected by explicit schema/schema_version pair; no filename-based or highest-version inference is permitted",
+    "additive_changes": "optional fields and future schema versions may be added without changing design_bundle_v1 semantics",
+    "breaking_changes": "changing required fields, ordering semantics, version-selection policy, or ac sweep interpretation requires a new schema version and governance review"
+  }
+}

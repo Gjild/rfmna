@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "docs/dev/p3_loader_temporary_exclusions_schema_v1.json",
+  "title": "P3 loader temporary exclusions v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "exclusions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "exclusions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/exclusion"
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "exclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "label",
+        "status",
+        "check_diagnostic_code",
+        "run_diagnostic_code",
+        "witness_capability_id"
+      ],
+      "properties": {
+        "capability_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "const": "interim_deferred"
+        },
+        "check_diagnostic_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "run_diagnostic_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "witness_capability_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

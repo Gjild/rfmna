@@ -1,0 +1,27 @@
+schema_version: 1
+exclusions:
+  - capability_id: frequency_dependent_compact_linear_forms
+    label: Frequency-dependent compact linear forms
+    status: interim_deferred
+    check_diagnostic_code: E_CLI_DESIGN_EXCLUDED_CAPABILITY
+    run_diagnostic_code: E_CLI_DESIGN_EXCLUDED_CAPABILITY
+    witness_capability_id: frequency_dependent_compact_linear_forms
+  - capability_id: parameter_sweep_support
+    label: Parameter sweep support
+    status: interim_deferred
+    check_diagnostic_code: E_CLI_DESIGN_EXCLUDED_CAPABILITY
+    run_diagnostic_code: E_CLI_DESIGN_EXCLUDED_CAPABILITY
+    witness_capability_id: parameter_sweep_support
+  - capability_id: y_block_elements
+    label: 1-port and 2-port Y blocks
+    status: interim_deferred
+    check_diagnostic_code: E_CLI_DESIGN_EXCLUDED_CAPABILITY
+    run_diagnostic_code: E_CLI_DESIGN_EXCLUDED_CAPABILITY
+    witness_capability_id: y_block_elements
+  - capability_id: z_block_elements
+    label: 1-port and 2-port Z blocks
+    status: interim_deferred
+    check_diagnostic_code: E_CLI_DESIGN_EXCLUDED_CAPABILITY
+    run_diagnostic_code: E_CLI_DESIGN_EXCLUDED_CAPABILITY
+    witness_capability_id: z_block_elements
+notes: Interim-only exclusion list for P3-01. Phase 3 closure requires this artifact to be absent or schema-valid empty.

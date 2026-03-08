@@ -23,7 +23,8 @@
       "mapping_mode": "diagnostic_equivalent_required",
       "source_paths": [
         "src/rfmna/elements/factory.py",
-        "src/rfmna/elements/factory_models.py"
+        "src/rfmna/elements/factory_models.py",
+        "src/rfmna/parser/design_bundle.py"
       ],
       "mapped_runtime_diagnostic_codes": [
         "E_IR_KIND_UNKNOWN"

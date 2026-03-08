@@ -1,12 +1,28 @@
 {
   "schema_version": 1,
-  "declared_frozen_ids": "none",
+  "declared_frozen_ids": [
+    3,
+    8,
+    9
+    ,
+    10,
+    11
+  ],
   "evidence": {
-    "semver_bump": null,
-    "decision_records": [],
-    "conformance_updates": [],
-    "migration_notes": [],
-    "reproducibility_impact_statement_path": null
+    "semver_bump": {
+      "from_version": "0.1.2",
+      "to_version": "0.1.3"
+    },
+    "decision_records": [
+      "docs/spec/decision_records/2026-03-07-p3-01-design-bundle-loader-cli-governance.md"
+    ],
+    "conformance_updates": [
+      "tests/conformance/test_design_bundle_loader_conformance.py"
+    ],
+    "migration_notes": [
+      "docs/spec/migration_notes/2026-03-07-v0-1-3-p3-01-design-bundle-loader-cli.md"
+    ],
+    "reproducibility_impact_statement_path": "docs/dev/reproducibility_impact_p3_01.md"
   },
-  "notes": "P3-00 bootstraps the Phase 3 governance gate, anti-tamper checks, optional-track activation policy, and CI status/blocking hooks. Scope excludes frozen artifacts and keeps Phase 2 blockers intact."
+  "notes": "P3-01 replaces the CLI loader stub with the governed design-bundle loader path. Frozen artifacts #3/#8/#9/#10/#11 are declared because the design-bundle schema and loader-backed CLI bridge now carry authoritative port, frequency-grammar, version-selection/ordering, and fail-sentinel execution surface; the decision record and contract doc classify #3/#8/#10/#11 as no semantic change and #9 as touched-path no-behavior-change."
 }

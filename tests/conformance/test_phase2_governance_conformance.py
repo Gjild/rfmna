@@ -47,6 +47,10 @@ _FROZEN_RULE_SAMPLE_PATHS = {
 _FROZEN_ID_THREAD_DEFAULTS = 12
 _FROZEN_ID_CLI_EXIT = 9
 _FROZEN_ID_THRESHOLD_STATUS_BANDS = 5
+_FROZEN_ID_PORT_WAVE = 3
+_FROZEN_ID_FREQUENCY_GRAMMAR = 8
+_FROZEN_ID_API_ORDERING = 10
+_FROZEN_ID_FAIL_SENTINEL = 11
 _REGRESSION_TOLERANCE_SOURCE = "docs/dev/tolerances/regression_baseline_v1.yaml"
 
 
@@ -197,6 +201,76 @@ def test_id12_detection_accepts_yaml_spacing_variants_for_thread_defaults() -> N
     assert _FROZEN_ID_THREAD_DEFAULTS in touched
 
 
+def test_frozen_rule_table_detects_design_bundle_schema_tokens_for_frozen_ids() -> None:
+    repo_root = _repo_root()
+    rules = _load_rule_table(repo_root / "docs/dev/frozen_change_governance_rules.yaml").rules
+
+    touched = derive_touched_frozen_ids(
+        changed_paths=("docs/spec/schemas/design_bundle_v1.json",),
+        changed_lines_by_path={
+            "docs/spec/schemas/design_bundle_v1.json": (
+                '    "port": {',
+                '    "frequency_sweep": {',
+                '  "x-compatibility-policy": {',
+                '    "active_default_version": "v1 selected by explicit schema/schema_version pair; no filename-based or highest-version inference is permitted",',
+                '    "breaking_changes": "changing required fields, ordering semantics, version-selection policy, or ac sweep interpretation requires a new schema version and governance review"',
+            )
+        },
+        rules=rules,
+    )
+
+    assert _FROZEN_ID_PORT_WAVE in touched
+    assert _FROZEN_ID_FREQUENCY_GRAMMAR in touched
+    assert _FROZEN_ID_CLI_EXIT in touched
+    assert _FROZEN_ID_API_ORDERING in touched
+
+
+def test_frozen_rule_table_detects_loader_parser_tokens_for_frozen_ids() -> None:
+    repo_root = _repo_root()
+    rules = _load_rule_table(repo_root / "docs/dev/frozen_change_governance_rules.yaml").rules
+
+    touched = derive_touched_frozen_ids(
+        changed_paths=("src/rfmna/parser/design_bundle.py",),
+        changed_lines_by_path={
+            "src/rfmna/parser/design_bundle.py": (
+                "def _build_rf_port(",
+                "def _parse_frequency_value(value: object, *, path: str) -> BundleFrequencyValue:",
+                "rf_z0_ohm=_canonical_rf_z0(ir.ports),",
+            )
+        },
+        rules=rules,
+    )
+
+    assert _FROZEN_ID_PORT_WAVE in touched
+    assert _FROZEN_ID_FREQUENCY_GRAMMAR in touched
+    assert _FROZEN_ID_API_ORDERING in touched
+
+
+def test_frozen_rule_table_detects_loader_bridge_tokens_for_port_and_fail_sentinel_ids() -> None:
+    repo_root = _repo_root()
+    rules = _load_rule_table(repo_root / "docs/dev/frozen_change_governance_rules.yaml").rules
+
+    touched = derive_touched_frozen_ids(
+        changed_paths=("src/rfmna/cli/design_loader.py", "src/rfmna/cli/main.py"),
+        changed_lines_by_path={
+            "src/rfmna/cli/design_loader.py": (
+                "        PortBoundary(",
+                "            p_plus_index=indexing.node_index(port.p_plus),",
+                "            p_minus_index=indexing.node_index(port.p_minus),",
+                "    def assemble_point(point_index: int, frequency_hz: float) -> tuple[csc_matrix, NDArray[np.complex128]]:",
+                "        filled = fill_numeric(pattern, stamps, ctx)",
+            ),
+            "src/rfmna/cli/main.py": (
+                "        sweep_result = _run_solver(bundle)",
+            ),
+        },
+        rules=rules,
+    )
+
+    assert _FROZEN_ID_PORT_WAVE in touched
+    assert _FROZEN_ID_FAIL_SENTINEL in touched
+
+
 def test_governance_gate_passes_for_non_frozen_change_scope_none(tmp_path: Path) -> None:
     change_scope_path = _write_change_scope(
         tmp_path,
@@ -217,10 +291,22 @@ def test_governance_gate_passes_for_non_frozen_change_scope_none(tmp_path: Path)
     assert result.passed, result.errors
 
 
-def test_governance_gate_fails_on_declared_vs_detected_scope_mismatch() -> None:
+def test_governance_gate_fails_on_declared_vs_detected_scope_mismatch(tmp_path: Path) -> None:
+    change_scope_path = _write_change_scope(
+        tmp_path,
+        declared_frozen_ids="none",
+        evidence={
+            "semver_bump": None,
+            "decision_records": [],
+            "conformance_updates": [],
+            "migration_notes": [],
+            "reproducibility_impact_statement_path": None,
+        },
+    )
     result = evaluate_governance_gate(
         repo_root=_repo_root(),
         changed_paths=("src/rfmna/cli/main.py",),
+        artifact_paths=GovernanceArtifactPaths(change_scope_path=str(change_scope_path)),
     )
     assert not result.passed
     assert any("declared_frozen_ids mismatch" in error for error in result.errors)
@@ -252,7 +338,7 @@ def test_governance_gate_blocks_missing_evidence_for_frozen_scope(tmp_path: Path
 def test_governance_gate_accepts_full_evidence_for_frozen_scope(tmp_path: Path) -> None:
     change_scope_path = _write_change_scope(
         tmp_path,
-        declared_frozen_ids=[9],
+        declared_frozen_ids=[9, 11],
         evidence=_FULL_EVIDENCE,
     )
 
@@ -558,11 +644,16 @@ def test_governance_gate_uses_baseline_rule_table_to_block_tampering_attempt(
     tampered_rules = {
         frozen_id: rule
         for frozen_id, rule in baseline_rule_table.rules.items()
-        if frozen_id != _FROZEN_ID_CLI_EXIT
+        if frozen_id not in {_FROZEN_ID_CLI_EXIT, _FROZEN_ID_FAIL_SENTINEL}
     }
     tampered_rules[_FROZEN_ID_CLI_EXIT] = type(next(iter(baseline_rule_table.rules.values())))(
         frozen_id=_FROZEN_ID_CLI_EXIT,
         label="CLI exit semantics and partial-sweep behavior",
+        detection=tuple(),
+    )
+    tampered_rules[_FROZEN_ID_FAIL_SENTINEL] = type(next(iter(baseline_rule_table.rules.values())))(
+        frozen_id=_FROZEN_ID_FAIL_SENTINEL,
+        label="Fail-point sentinel policy",
         detection=tuple(),
     )
     tampered_rule_table = GovernanceRuleTableData(
@@ -587,6 +678,21 @@ def test_governance_gate_uses_baseline_rule_table_to_block_tampering_attempt(
         baseline_artifacts=GovernanceBaselineArtifacts(
             rule_table_data=baseline_rule_table,
             tolerance_classification_data=baseline_classification,
+        ),
+        artifact_paths=GovernanceArtifactPaths(
+            change_scope_path=str(
+                _write_change_scope(
+                    tmp_path,
+                    declared_frozen_ids="none",
+                    evidence={
+                        "semver_bump": None,
+                        "decision_records": [],
+                        "conformance_updates": [],
+                        "migration_notes": [],
+                        "reproducibility_impact_statement_path": None,
+                    },
+                )
+            )
         ),
     )
     assert not result.passed

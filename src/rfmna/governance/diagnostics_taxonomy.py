@@ -38,6 +38,10 @@ _REQUIRED_TRACK_B_FAMILY_MODES: Final[dict[str, str]] = {
     "E_SOLVER_CONFIG_*": "typed_error_only",
 }
 _THRESHOLDS_REL_PATH: Final[str] = "docs/spec/thresholds_v4_0_0.yaml"
+_LOADER_EXCLUSIONS_ARTIFACT_PATHS: Final[tuple[str, ...]] = (
+    "docs/dev/p3_loader_temporary_exclusions.yaml",
+    "src/rfmna/parser/resources/p3_loader_temporary_exclusions.yaml",
+)
 _TYPED_ERROR_MATRIX_REL_PATH: Final[str] = "docs/dev/typed_error_mapping_matrix.yaml"
 
 type MappingMode = Literal["typed_error_only", "diagnostic_equivalent_required"]
@@ -47,6 +51,7 @@ type MappingMode = Literal["typed_error_only", "diagnostic_equivalent_required"]
 class RuntimeDiagnosticInventory:
     schema_version: int
     runtime_emission_paths: tuple[str, ...]
+    runtime_artifact_paths: tuple[str, ...]
     non_diagnostic_scoped_paths: tuple[str, ...]
     runtime_codes: tuple[str, ...]
 
@@ -86,6 +91,7 @@ def load_runtime_diagnostic_inventory(path: Path) -> RuntimeDiagnosticInventory:
         required_keys=(
             "schema_version",
             "runtime_emission_paths",
+            "runtime_artifact_paths",
             "non_diagnostic_scoped_paths",
             "runtime_codes",
         ),
@@ -98,6 +104,11 @@ def load_runtime_diagnostic_inventory(path: Path) -> RuntimeDiagnosticInventory:
         payload.get("runtime_emission_paths"),
         field_name="runtime_emission_paths",
         allow_empty=False,
+    )
+    runtime_artifact_paths = _sorted_unique_strings(
+        payload.get("runtime_artifact_paths"),
+        field_name="runtime_artifact_paths",
+        allow_empty=True,
     )
     non_diagnostic_scoped_paths = _sorted_unique_strings(
         payload.get("non_diagnostic_scoped_paths"),
@@ -112,6 +123,7 @@ def load_runtime_diagnostic_inventory(path: Path) -> RuntimeDiagnosticInventory:
     return RuntimeDiagnosticInventory(
         schema_version=1,
         runtime_emission_paths=runtime_emission_paths,
+        runtime_artifact_paths=runtime_artifact_paths,
         non_diagnostic_scoped_paths=non_diagnostic_scoped_paths,
         runtime_codes=runtime_codes,
     )
@@ -284,19 +296,15 @@ def validate_runtime_diagnostic_inventory(
     catalog_codes: set[str],
 ) -> tuple[str, ...]:
     errors: list[str] = []
-    scoped_paths = tuple(
-        sorted(set((*inventory.runtime_emission_paths, *inventory.non_diagnostic_scoped_paths)))
-    )
-    for prefix in _RUNTIME_SCOPE_REQUIRED_PREFIXES:
-        if not any(path.startswith(prefix) for path in scoped_paths):
-            errors.append(f"runtime inventory scope does not cover module prefix: {prefix}")
-
     runtime_emission_paths = set(inventory.runtime_emission_paths)
     non_diagnostic_scoped_paths = set(inventory.non_diagnostic_scoped_paths)
-    if _THRESHOLDS_REL_PATH not in runtime_emission_paths:
-        errors.append(
-            f"runtime diagnostic inventory missing required runtime source path: {_THRESHOLDS_REL_PATH}"
+    errors.extend(
+        _validate_runtime_inventory_scope(
+            repo_root=repo_root,
+            inventory=inventory,
+            runtime_emission_paths=runtime_emission_paths,
         )
+    )
     typed_error_only_families, matrix_load_errors = _load_typed_error_only_families(
         repo_root=repo_root
     )
@@ -355,15 +363,73 @@ def validate_runtime_diagnostic_inventory(
             "runtime diagnostic inventory found typed_error_only code emissions on runtime paths "
             "(explicit promotion required): " + ", ".join(typed_only_runtime_emissions)
         )
+    errors.extend(
+        _validate_runtime_inventory_codes(
+            repo_root=repo_root,
+            inventory=inventory,
+            catalog_codes=catalog_codes,
+            typed_error_only_families=typed_error_only_families,
+            discovered_runtime_codes=discovered_runtime_codes,
+        )
+    )
+    return tuple(errors)
 
+
+def _validate_runtime_inventory_scope(
+    *,
+    repo_root: Path,
+    inventory: RuntimeDiagnosticInventory,
+    runtime_emission_paths: set[str],
+) -> tuple[str, ...]:
+    errors: list[str] = []
+    scoped_paths = tuple(
+        sorted(set((*inventory.runtime_emission_paths, *inventory.non_diagnostic_scoped_paths)))
+    )
+    for prefix in _RUNTIME_SCOPE_REQUIRED_PREFIXES:
+        if not any(path.startswith(prefix) for path in scoped_paths):
+            errors.append(f"runtime inventory scope does not cover module prefix: {prefix}")
+    if _THRESHOLDS_REL_PATH not in runtime_emission_paths:
+        errors.append(
+            f"runtime diagnostic inventory missing required runtime source path: {_THRESHOLDS_REL_PATH}"
+        )
+    runtime_artifact_paths = set(inventory.runtime_artifact_paths)
+    for rel_path in _LOADER_EXCLUSIONS_ARTIFACT_PATHS:
+        if (repo_root / rel_path).is_file() and rel_path not in runtime_artifact_paths:
+            errors.append(
+                "runtime diagnostic inventory missing required runtime artifact path: "
+                + rel_path
+            )
+    for rel_path in inventory.runtime_artifact_paths:
+        try:
+            _read_repo_file(repo_root=repo_root, rel_path=rel_path)
+        except ValueError as exc:
+            errors.append(str(exc))
+    return tuple(errors)
+
+
+def _validate_runtime_inventory_codes(
+    *,
+    repo_root: Path,
+    inventory: RuntimeDiagnosticInventory,
+    catalog_codes: set[str],
+    typed_error_only_families: tuple[str, ...],
+    discovered_runtime_codes: tuple[str, ...],
+) -> tuple[str, ...]:
+    errors: list[str] = []
+    artifact_codes, artifact_code_errors = _derive_runtime_artifact_codes(
+        repo_root=repo_root,
+        runtime_artifact_paths=inventory.runtime_artifact_paths,
+    )
+    errors.extend(artifact_code_errors)
     derived_codes = derive_runtime_emitted_codes(
         repo_root=repo_root,
         runtime_emission_paths=inventory.runtime_emission_paths,
         typed_error_only_families=typed_error_only_families,
     )
-    derived_set = set(derived_codes)
+    derived_set = set(derived_codes) | set(artifact_codes)
     declared_set = set(inventory.runtime_codes)
-    missing = sorted(set(discovered_runtime_codes) - declared_set)
+    emitted_codes = set(discovered_runtime_codes) | set(artifact_codes)
+    missing = sorted(emitted_codes - declared_set)
     if missing:
         errors.append("runtime diagnostic inventory missing emitted codes: " + ", ".join(missing))
     extras = sorted(declared_set - derived_set)
@@ -371,13 +437,12 @@ def validate_runtime_diagnostic_inventory(
         errors.append(
             "runtime diagnostic inventory declares non-emitted codes: " + ", ".join(extras)
         )
-
     uncataloged = sorted(declared_set - catalog_codes)
     if uncataloged:
         errors.append(
             "runtime diagnostic inventory includes uncataloged codes: " + ", ".join(uncataloged)
         )
-    uncataloged_emitted = sorted(set(discovered_runtime_codes) - catalog_codes)
+    uncataloged_emitted = sorted(emitted_codes - catalog_codes)
     if uncataloged_emitted:
         errors.append(
             "runtime diagnostic inventory discovered uncataloged emitted runtime codes: "
@@ -545,6 +610,50 @@ def _discover_typed_only_codes_on_runtime_paths(
             if _code_matches_any_family(code=code, families=typed_error_only_families):
                 violations.add(f"{code}@{rel_path}")
     return tuple(sorted(violations))
+
+
+def _derive_runtime_artifact_codes(
+    *,
+    repo_root: Path,
+    runtime_artifact_paths: tuple[str, ...],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    codes: set[str] = set()
+    errors: list[str] = []
+    for rel_path in runtime_artifact_paths:
+        try:
+            payload_text = _read_repo_file(repo_root=repo_root, rel_path=rel_path)
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        try:
+            codes.update(_extract_runtime_codes_from_artifact(payload_text=payload_text, rel_path=rel_path))
+        except ValueError as exc:
+            errors.append(str(exc))
+    return (tuple(sorted(codes)), tuple(errors))
+
+
+def _extract_runtime_codes_from_artifact(*, payload_text: str, rel_path: str) -> tuple[str, ...]:
+    if rel_path not in _LOADER_EXCLUSIONS_ARTIFACT_PATHS:
+        raise ValueError(f"unsupported runtime artifact code source: {rel_path}")
+    try:
+        payload = yaml.safe_load(payload_text)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid YAML payload: {rel_path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"{rel_path} must decode to mapping")
+    exclusions = payload.get("exclusions")
+    if not isinstance(exclusions, list):
+        raise ValueError(f"{rel_path} missing exclusions list")
+    codes: set[str] = set()
+    for index, exclusion in enumerate(exclusions):
+        if not isinstance(exclusion, dict):
+            raise ValueError(f"{rel_path} exclusions[{index}] must be a mapping")
+        for field_name in ("check_diagnostic_code", "run_diagnostic_code"):
+            code = exclusion.get(field_name)
+            if not isinstance(code, str) or not code:
+                raise ValueError(f"{rel_path} exclusions[{index}].{field_name} must be non-empty")
+            codes.add(code)
+    return tuple(sorted(codes))
 
 
 def _discover_repo_typed_codes_by_family(

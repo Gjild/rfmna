@@ -241,6 +241,48 @@ _CATALOG_ENTRIES: tuple[DiagnosticCatalogEntry, ...] = (
         SolverStage.PARSE,
         "inspect check-command integration and retry",
     ),
+    _entry(
+        "E_CLI_DESIGN_READ_FAILED",
+        Severity.ERROR,
+        SolverStage.PARSE,
+        "provide a readable JSON design bundle path",
+    ),
+    _entry(
+        "E_CLI_DESIGN_PARSE_FAILED",
+        Severity.ERROR,
+        SolverStage.PARSE,
+        "fix JSON syntax and retry",
+    ),
+    _entry(
+        "E_CLI_DESIGN_SCHEMA_UNSUPPORTED",
+        Severity.ERROR,
+        SolverStage.PARSE,
+        "set schema to docs/spec/schemas/design_bundle_v1.json and schema_version to 1",
+    ),
+    _entry(
+        "E_CLI_DESIGN_SCHEMA_INVALID",
+        Severity.ERROR,
+        SolverStage.PARSE,
+        "fix the design bundle shape to match design_bundle_v1.json",
+    ),
+    _entry(
+        "E_CLI_DESIGN_VALUE_INVALID",
+        Severity.ERROR,
+        SolverStage.PARSE,
+        "fix the design bundle model fields and retry",
+    ),
+    _entry(
+        "E_CLI_DESIGN_EXCLUSION_POLICY_INVALID",
+        Severity.ERROR,
+        SolverStage.PARSE,
+        "fix docs/dev/p3_loader_temporary_exclusions.yaml to match the active interim loader exclusions",
+    ),
+    _entry(
+        "E_CLI_DESIGN_EXCLUDED_CAPABILITY",
+        Severity.ERROR,
+        SolverStage.PARSE,
+        "remove the excluded capability usage or wait for Phase 3 closure support",
+    ),
 )
 
 

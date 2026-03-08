@@ -25,15 +25,15 @@ Evidence:
 
 ## 2) Current Limits
 
-- `rfmna run` and `rfmna check` depend on project-specific design-loader wiring for real design execution.
+- `rfmna run` and `rfmna check` execute through the in-repo `design_bundle_v1` loader for supported AC bundles.
 - `rfmna run` supports `--analysis ac` only.
-- Without design-loader wiring, `rfmna check` returns a typed loader-boundary diagnostic (`E_CLI_CHECK_LOADER_FAILED`) and exits non-zero.
+- Interim-deferred in-scope capabilities fail with deterministic typed diagnostics from `docs/dev/p3_loader_temporary_exclusions.yaml`.
 
 Evidence:
 
 - `tests/unit/test_cli_semantics.py::test_run_analysis_guard_non_ac_is_nonzero`
-- `tests/unit/test_cli_semantics.py::test_check_loader_boundary_failure_emits_typed_diagnostic`
-- `tests/conformance/test_cli_exit_conformance.py::test_check_exit_mapping_covers_warning_json_and_loader_boundary_paths`
+- `tests/conformance/test_design_bundle_loader_conformance.py::test_loader_backed_check_and_run_paths_accept_supported_bundle`
+- `tests/conformance/test_design_bundle_loader_conformance.py::test_loader_failure_diagnostics_are_taxonomy_complete_in_check_json`
 
 ## 3) Hardened `check` Contract
 

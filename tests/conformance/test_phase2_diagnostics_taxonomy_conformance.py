@@ -90,6 +90,81 @@ def test_track_a_runtime_inventory_guard_fails_on_missing_runtime_emission_path(
     assert any("src/rfmna/rf_metrics/y_params.py" in error for error in errors)
 
 
+def test_track_a_runtime_inventory_guard_fails_on_missing_runtime_artifact_path(
+    tmp_path: Path,
+) -> None:
+    baseline_inventory = json.loads(_runtime_inventory_path().read_text(encoding="utf-8"))
+    runtime_artifact_paths = baseline_inventory["runtime_artifact_paths"]
+    assert isinstance(runtime_artifact_paths, list)
+    baseline_inventory["runtime_artifact_paths"] = [
+        path for path in runtime_artifact_paths if path != "docs/dev/p3_loader_temporary_exclusions.yaml"
+    ]
+
+    inventory_path = tmp_path / "diagnostic_runtime_code_inventory.yaml"
+    inventory_path.write_text(json.dumps(baseline_inventory, indent=2), encoding="utf-8")
+
+    inventory = load_runtime_diagnostic_inventory(inventory_path)
+    errors = validate_runtime_diagnostic_inventory(
+        repo_root=_repo_root(),
+        inventory=inventory,
+        catalog_codes=_catalog_codes(),
+    )
+
+    assert errors
+    assert any("missing required runtime artifact path" in error for error in errors)
+    assert any("docs/dev/p3_loader_temporary_exclusions.yaml" in error for error in errors)
+
+
+def test_track_a_runtime_inventory_guard_fails_on_missing_packaged_runtime_artifact_path(
+    tmp_path: Path,
+) -> None:
+    baseline_inventory = json.loads(_runtime_inventory_path().read_text(encoding="utf-8"))
+    runtime_artifact_paths = baseline_inventory["runtime_artifact_paths"]
+    assert isinstance(runtime_artifact_paths, list)
+    baseline_inventory["runtime_artifact_paths"] = [
+        path
+        for path in runtime_artifact_paths
+        if path != "src/rfmna/parser/resources/p3_loader_temporary_exclusions.yaml"
+    ]
+
+    inventory_path = tmp_path / "diagnostic_runtime_code_inventory.yaml"
+    inventory_path.write_text(json.dumps(baseline_inventory, indent=2), encoding="utf-8")
+
+    inventory = load_runtime_diagnostic_inventory(inventory_path)
+    errors = validate_runtime_diagnostic_inventory(
+        repo_root=_repo_root(),
+        inventory=inventory,
+        catalog_codes=_catalog_codes(),
+    )
+
+    assert errors
+    assert any("missing required runtime artifact path" in error for error in errors)
+    assert any("src/rfmna/parser/resources/p3_loader_temporary_exclusions.yaml" in error for error in errors)
+
+
+def test_track_a_runtime_inventory_guard_fails_when_runtime_artifact_adds_uninventoried_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inventory = load_runtime_diagnostic_inventory(_runtime_inventory_path())
+    original = diagnostics_taxonomy._derive_runtime_artifact_codes
+
+    def _spy(*, repo_root: Path, runtime_artifact_paths: tuple[str, ...]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        codes, errors = original(repo_root=repo_root, runtime_artifact_paths=runtime_artifact_paths)
+        return (tuple(sorted(set((*codes, "W_RF_PASSIVITY")))), errors)
+
+    monkeypatch.setattr(diagnostics_taxonomy, "_derive_runtime_artifact_codes", _spy)
+
+    errors = validate_runtime_diagnostic_inventory(
+        repo_root=_repo_root(),
+        inventory=inventory,
+        catalog_codes=_catalog_codes(),
+    )
+
+    assert errors
+    assert any("missing emitted codes" in error for error in errors)
+    assert any("W_RF_PASSIVITY" in error for error in errors)
+
+
 def test_track_a_runtime_inventory_guard_fails_on_misclassified_runtime_path(
     tmp_path: Path,
 ) -> None:

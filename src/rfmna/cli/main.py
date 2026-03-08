@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from typing import Final, Literal, Protocol, cast, runtime_checkable
 
 import numpy as np
 import typer
 from numpy.typing import NDArray
 
+from rfmna.cli.design_loader import CliDesignBundle, load_design_bundle
 from rfmna.diagnostics import (
     DiagnosticEvent,
     Severity,
@@ -17,7 +17,8 @@ from rfmna.diagnostics import (
     sort_diagnostics,
 )
 from rfmna.parser import PreflightInput, preflight_check
-from rfmna.rf_metrics import PortBoundary, SParameterResult, YParameterResult, ZParameterResult
+from rfmna.parser.design_bundle import DesignBundleLoadError, adapt_loader_diagnostics_for_command
+from rfmna.rf_metrics import SParameterResult, YParameterResult, ZParameterResult
 from rfmna.solver import (
     AttemptTraceRecord,
     FallbackRunConfig,
@@ -62,15 +63,6 @@ _RF_OPTION = typer.Option(
 _SOLVER_CONFIG_SNAPSHOT_STATE: dict[str, dict[str, object] | None] = {"value": None}
 
 
-@dataclass(frozen=True, slots=True)
-class CliDesignBundle:
-    preflight_input: PreflightInput
-    frequencies_hz: Sequence[float] | NDArray[np.float64]
-    sweep_layout: SweepLayout
-    assemble_point: AssemblePointFn
-    rf_ports: tuple[PortBoundary, ...] = ()
-
-
 @runtime_checkable
 class DesignLoader(Protocol):
     def __call__(self, design: str) -> CliDesignBundle: ...
@@ -92,9 +84,7 @@ class SweepRunner(Protocol):
 
 
 def _load_design_bundle(design: str) -> CliDesignBundle:
-    raise typer.BadParameter(
-        f"Design loader is not configured for '{design}'. Provide a valid design integration."
-    )
+    return load_design_bundle(design)
 
 
 def _execute_preflight(input_data: PreflightInput) -> tuple[DiagnosticEvent, ...]:
@@ -177,6 +167,8 @@ def check(
     diagnostics: tuple[DiagnosticEvent, ...]
     try:
         bundle = _load_design_bundle(design)
+    except DesignBundleLoadError as exc:
+        diagnostics = adapt_loader_diagnostics_for_command(exc.diagnostics, command="check")
     except typer.BadParameter as exc:
         diagnostics = (_check_loader_failure_diagnostic(design=design, exc=exc),)
     except Exception as exc:  # pragma: no cover - defensive boundary path
@@ -224,6 +216,11 @@ def run(
             bundle.assemble_point,
             rf_request=rf_request,
         )
+    except DesignBundleLoadError as exc:
+        _print_preflight_diagnostics(
+            adapt_loader_diagnostics_for_command(exc.diagnostics, command="run")
+        )
+        raise typer.Exit(code=2) from exc
     except typer.BadParameter:
         raise
     except typer.Exit:
@@ -233,13 +230,15 @@ def run(
         raise typer.Exit(code=2) from exc
 
     frequencies = np.asarray(bundle.frequencies_hz, dtype=np.float64)
+    manifest_input_payload, manifest_resolved_params_payload = _manifest_payloads(
+        bundle=bundle,
+        design=design,
+        analysis=analysis,
+        frequencies=frequencies,
+    )
     manifest = build_manifest(
-        input_payload={
-            "design": design,
-            "analysis": analysis,
-            "frequencies_hz": [float(value) for value in frequencies.tolist()],
-        },
-        resolved_params_payload={},
+        input_payload=manifest_input_payload,
+        resolved_params_payload=manifest_resolved_params_payload,
         solver_config_snapshot={
             **_consume_last_solver_config_snapshot(),
             "analysis": analysis,
@@ -266,6 +265,30 @@ def _consume_last_solver_config_snapshot() -> dict[str, object]:
     if snapshot is None:
         return dict(build_solver_config_snapshot())
     return dict(snapshot)
+
+
+def _manifest_payloads(
+    *,
+    bundle: CliDesignBundle,
+    design: str,
+    analysis: str,
+    frequencies: NDArray[np.float64],
+) -> tuple[dict[str, object], dict[str, object]]:
+    input_payload = (
+        dict(bundle.manifest_input_payload)
+        if bundle.manifest_input_payload
+        else {
+            "analysis": analysis,
+            "design": design,
+            "frequencies_hz": [float(value) for value in frequencies.tolist()],
+        }
+    )
+    resolved_params_payload = (
+        dict(bundle.manifest_resolved_params_payload)
+        if bundle.manifest_resolved_params_payload
+        else {}
+    )
+    return input_payload, resolved_params_payload
 
 
 def _resolve_rf_request(
@@ -300,6 +323,7 @@ def _resolve_rf_request(
         request = SweepRFRequest(
             ports=bundle.rf_ports,
             metrics=canonical_metrics,
+            z0_ohm=bundle.rf_z0_ohm,
         )
     except ValueError as exc:
         return (

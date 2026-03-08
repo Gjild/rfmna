@@ -270,3 +270,83 @@ def test_run_path_emits_solver_snapshot_with_explicit_default_fields(
     assert snapshot["conversion_math_controls"] == {"enable_gmin_regularization": False}
     assert snapshot["attempt_trace_summary"]["total_solve_calls"] == 0
     assert snapshot["attempt_trace_summary"]["skip_reason_counts"] == {}
+
+
+def test_run_path_uses_loader_backed_manifest_payloads_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preflight_input = PreflightInput(nodes=("0",), reference_node="0")
+
+    def assemble_point(index: int, frequency_hz: float) -> tuple[object, NDArray[np.complex128]]:
+        del index, frequency_hz
+        raise AssertionError("assemble_point should not be used in this test")
+
+    bundle = cli_main.CliDesignBundle(
+        preflight_input=preflight_input,
+        frequencies_hz=(1.0,),
+        sweep_layout=SweepLayout(n_nodes=1, n_aux=0),
+        assemble_point=assemble_point,
+        manifest_input_payload={"design_bundle": {"design": {"parameters": {"r_load": "75"}}}},
+        manifest_resolved_params_payload={"r_load": 75.0},
+    )
+    monkeypatch.setattr(cli_main, "_load_design_bundle", lambda design: bundle)
+    monkeypatch.setattr(cli_main, "_execute_preflight", lambda _: ())
+    monkeypatch.setattr(
+        cli_main,
+        "_execute_sweep",
+        lambda freq, layout, assemble: _dummy_sweep_result(("pass",)),
+    )
+
+    captured: dict[str, object] = {}
+
+    def _build_manifest(**kwargs: object) -> RunManifest:
+        captured["input_payload"] = kwargs["input_payload"]
+        captured["resolved_params_payload"] = kwargs["resolved_params_payload"]
+        return _build_minimal_manifest()
+
+    monkeypatch.setattr(cli_main, "build_manifest", _build_manifest)
+
+    result = runner.invoke(cli_main.app, ["run", "design.net", "--analysis", "ac"])
+    assert result.exit_code == 0
+    assert captured["input_payload"] == bundle.manifest_input_payload
+    assert captured["resolved_params_payload"] == bundle.manifest_resolved_params_payload
+
+
+def test_run_path_manifest_fallback_preserves_legacy_design_field_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preflight_input = PreflightInput(nodes=("0",), reference_node="0")
+
+    def assemble_point(index: int, frequency_hz: float) -> tuple[object, NDArray[np.complex128]]:
+        del index, frequency_hz
+        raise AssertionError("assemble_point should not be used in this test")
+
+    bundle = cli_main.CliDesignBundle(
+        preflight_input=preflight_input,
+        frequencies_hz=(1.0,),
+        sweep_layout=SweepLayout(n_nodes=1, n_aux=0),
+        assemble_point=assemble_point,
+    )
+    monkeypatch.setattr(cli_main, "_load_design_bundle", lambda design: bundle)
+    monkeypatch.setattr(cli_main, "_execute_preflight", lambda _: ())
+    monkeypatch.setattr(
+        cli_main,
+        "_execute_sweep",
+        lambda freq, layout, assemble: _dummy_sweep_result(("pass",)),
+    )
+
+    captured: dict[str, object] = {}
+
+    def _build_manifest(**kwargs: object) -> RunManifest:
+        captured["input_payload"] = kwargs["input_payload"]
+        return _build_minimal_manifest()
+
+    monkeypatch.setattr(cli_main, "build_manifest", _build_manifest)
+
+    result = runner.invoke(cli_main.app, ["run", "design.net", "--analysis", "ac"])
+    assert result.exit_code == 0
+    assert captured["input_payload"] == {
+        "analysis": "ac",
+        "design": "design.net",
+        "frequencies_hz": [1.0],
+    }

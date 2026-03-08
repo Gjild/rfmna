@@ -1,19 +1,25 @@
 {
   "schema_version": 1,
   "declared_surface_ids": [
+    "design_bundle_contract",
+    "optional_track_activation_contract",
     "phase3_governance_bootstrap"
   ],
   "evidence": {
     "policy_docs": [
+      "docs/dev/design_bundle_contract.md",
       "docs/dev/optional_track_activation_policy.md",
       "docs/dev/phase3_change_surface_policy.md",
       "docs/dev/phase3_gate.md"
     ],
     "schema_artifacts": [
+      "docs/dev/p3_loader_temporary_exclusions_schema_v1.json",
+      "docs/spec/schemas/design_bundle_v1.json",
       "docs/dev/optional_track_activation_schema_v1.json",
       "docs/dev/phase3_change_surface_schema_v1.json"
     ],
     "conformance_updates": [
+      "tests/conformance/test_design_bundle_loader_conformance.py",
       "tests/conformance/test_phase3_gate_conformance.py"
     ],
     "ci_enforcement": [
@@ -23,5 +29,5 @@
       "docs/dev/phase3_process_traceability.md"
     ]
   },
-  "notes": "Review follow-up to P3-00: keep the Phase 3 bootstrap gate in place while allowing unrelated diffs to evaluate against a quiescent contract-surface declaration state. Scope excludes frozen artifacts."
+  "notes": "P3-01 introduces the governed design-bundle contract surface, updates the bootstrap rule table/policy so docs/spec/schemas artifacts can participate in Phase 3 surface evidence, and touches the shared Phase 3 process-traceability artifact that is also authoritative for optional-track activation governance."
 }

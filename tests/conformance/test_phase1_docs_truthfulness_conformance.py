@@ -121,10 +121,10 @@ def test_documented_cli_help_commands_remain_executable() -> None:
         assert result.exit_code == 0, f"documented command failed: {command}"
 
 
-def test_phase1_usage_marks_design_loader_dependent_commands_as_bounded() -> None:
+def test_phase1_usage_marks_design_bundle_commands_as_loader_backed() -> None:
     usage = _read_repo_text("docs/dev/phase1_usage.md")
-    assert "require a project-specific design-loader integration" in usage
-    assert "Without design-loader wiring, CLI returns a typed parameter error" in usage
+    assert "execute through the in-repo `design_bundle_v1` loader" in usage
+    assert "Interim-deferred in-scope capabilities fail with deterministic typed diagnostics" in usage
 
 
 def test_phase1_usage_api_example_is_executable_in_repo_context() -> None:

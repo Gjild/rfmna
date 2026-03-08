@@ -11,7 +11,7 @@ It is parsed as YAML (JSON subset supported).
 - Each touched surface must name the exact canonical evidence artifact paths required by its rule-table entry; unrelated files in the same evidence bucket do not satisfy the declaration.
 - Evidence is machine-checkable and must use repository-relative paths with required prefixes:
   - `policy_docs`: `docs/dev/`
-  - `schema_artifacts`: `docs/dev/` and `.json`
+  - `schema_artifacts`: `docs/dev/` or `docs/spec/schemas/` and `.json`
   - `conformance_updates`: `tests/conformance/`
   - `ci_enforcement`: `.github/workflows/`
   - `process_traceability`: `docs/dev/`
