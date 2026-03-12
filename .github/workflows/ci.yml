@@ -38,7 +38,19 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             gov_base="${{ github.event.pull_request.base.sha }}"
           else
-            gov_base="${{ github.event.before }}"
+            default_branch="${{ github.event.repository.default_branch }}"
+            if [ -z "$default_branch" ]; then
+              echo "Governance default branch is missing."
+              exit 1
+            fi
+            if [ "${{ github.ref_name }}" = "$default_branch" ]; then
+              gov_base="${{ github.event.before }}"
+            else
+              if ! git rev-parse --verify --quiet "origin/${default_branch}^{commit}" >/dev/null; then
+                git fetch --no-tags origin "refs/heads/${default_branch}:refs/remotes/origin/${default_branch}"
+              fi
+              gov_base="$(git merge-base "origin/${default_branch}" "${{ github.sha }}")"
+            fi
           fi
           if [ -z "$gov_base" ] || [ "$gov_base" = "$ZERO_SHA" ] || ! git rev-parse --verify --quiet "${gov_base}^{commit}" >/dev/null; then
             if git rev-parse --verify --quiet "${{ github.sha }}^" >/dev/null; then
@@ -57,7 +69,19 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             gov_base="${{ github.event.pull_request.base.sha }}"
           else
-            gov_base="${{ github.event.before }}"
+            default_branch="${{ github.event.repository.default_branch }}"
+            if [ -z "$default_branch" ]; then
+              echo "Phase 3 governance default branch is missing."
+              exit 1
+            fi
+            if [ "${{ github.ref_name }}" = "$default_branch" ]; then
+              gov_base="${{ github.event.before }}"
+            else
+              if ! git rev-parse --verify --quiet "origin/${default_branch}^{commit}" >/dev/null; then
+                git fetch --no-tags origin "refs/heads/${default_branch}:refs/remotes/origin/${default_branch}"
+              fi
+              gov_base="$(git merge-base "origin/${default_branch}" "${{ github.sha }}")"
+            fi
           fi
           if [ -z "$gov_base" ] || [ "$gov_base" = "$ZERO_SHA" ]; then
             echo "Phase 3 governance requires a non-empty base ref."

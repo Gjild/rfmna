@@ -2545,6 +2545,11 @@ def test_ci_workflow_contains_phase3_subgates_and_status_artifact() -> None:
     resolve_run = named_steps["Resolve Phase 3 governance diff range"][1].get("run")
     assert isinstance(resolve_run, str)
     assert "RFMNA_PHASE3_GOV_BASE" in resolve_run
+    assert 'default_branch="${{ github.event.repository.default_branch }}"' in resolve_run
+    assert 'if [ "${{ github.ref_name }}" = "$default_branch" ]; then' in resolve_run
+    assert 'gov_base="${{ github.event.before }}"' in resolve_run
+    assert 'git fetch --no-tags origin "refs/heads/${default_branch}:refs/remotes/origin/${default_branch}"' in resolve_run
+    assert 'gov_base="$(git merge-base "origin/${default_branch}" "${{ github.sha }}")"' in resolve_run
     assert "non-empty base ref" in resolve_run
     assert "git rev-parse --verify --quiet \"${gov_base}^{commit}\"" in resolve_run
     assert "git rev-parse \"${{ github.sha }}^\"" not in resolve_run

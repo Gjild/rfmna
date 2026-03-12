@@ -174,7 +174,11 @@ def test_ci_workflow_contains_phase2_governance_and_category_subgates() -> None:
     resolve_range_run = named_steps["Resolve governance diff range"][1].get("run")
     assert isinstance(resolve_range_run, str)
     assert 'ZERO_SHA="0000000000000000000000000000000000000000"' in resolve_range_run
+    assert 'default_branch="${{ github.event.repository.default_branch }}"' in resolve_range_run
+    assert 'if [ "${{ github.ref_name }}" = "$default_branch" ]; then' in resolve_range_run
     assert 'gov_base="${{ github.event.before }}"' in resolve_range_run
+    assert 'git fetch --no-tags origin "refs/heads/${default_branch}:refs/remotes/origin/${default_branch}"' in resolve_range_run
+    assert 'gov_base="$(git merge-base "origin/${default_branch}" "${{ github.sha }}")"' in resolve_range_run
     assert 'git rev-parse --verify --quiet "${gov_base}^{commit}"' in resolve_range_run
     assert 'gov_base="$(git rev-parse "${{ github.sha }}^")"' in resolve_range_run
 

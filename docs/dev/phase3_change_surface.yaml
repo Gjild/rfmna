@@ -1,28 +1,20 @@
 {
   "schema_version": 1,
   "declared_surface_ids": [
-    "design_bundle_contract",
     "optional_track_activation_contract",
     "phase3_governance_bootstrap"
   ],
   "evidence": {
     "policy_docs": [
-      "docs/dev/design_bundle_contract.md",
-      "docs/dev/p3_02_design_bundle_schema_evolution.md",
       "docs/dev/optional_track_activation_policy.md",
       "docs/dev/phase3_change_surface_policy.md",
       "docs/dev/phase3_gate.md"
     ],
     "schema_artifacts": [
-      "docs/dev/p3_loader_temporary_exclusions_schema_v1.json",
-      "docs/spec/schemas/design_bundle_v1.json",
-      "src/rfmna/parser/resources/design_bundle_v1.json",
       "docs/dev/optional_track_activation_schema_v1.json",
       "docs/dev/phase3_change_surface_schema_v1.json"
     ],
     "conformance_updates": [
-      "tests/conformance/test_design_bundle_loader_conformance.py",
-      "tests/conformance/test_design_bundle_hierarchy_conformance.py",
       "tests/conformance/test_phase3_gate_conformance.py"
     ],
     "ci_enforcement": [
@@ -32,5 +24,5 @@
       "docs/dev/phase3_process_traceability.md"
     ]
   },
-  "notes": "The design_bundle_contract surface now includes the additive-v1 hierarchy schema-evolution policy artifact and dedicated hierarchy conformance coverage; the Phase 3 bootstrap surface is also updated so packaged parser schema mirrors under src/rfmna/parser/resources remain valid schema_artifact evidence."
+  "notes": "Follow-up governance workflow fix. The current diff only updates Phase 3 bootstrap and optional-track activation CI range handling plus matching conformance coverage; no design-bundle contract surface is touched."
 }
