@@ -11,21 +11,29 @@ pytestmark = pytest.mark.unit
 
 def test_parser_public_api_surface_is_explicit_and_stable() -> None:
     assert parser_api.__all__ == [
+        "DESIGN_BUNDLE_SCHEMA_ID",
+        "DESIGN_BUNDLE_SCHEMA_VERSION",
+        "DesignBundleLoadError",
         "HardConstraint",
         "IdealVSource",
         "ParseError",
         "ParseErrorCode",
         "ParseErrorDetail",
+        "ParsedDesignBundle",
         "PortDecl",
         "PreflightInput",
         "ResolvedParameters",
         "evaluate_expression",
         "extract_dependencies",
+        "load_design_bundle_document",
         "parse_frequency_unit",
         "parse_scalar_number",
         "preflight_check",
         "resolve_parameters",
     ]
+    assert hasattr(parser_api, "load_design_bundle_document")
+    assert hasattr(parser_api, "ParsedDesignBundle")
+    assert not hasattr(parser_api, "canonical_bundle_parse_product_json")
     assert not hasattr(parser_api, "FREQUENCY_UNIT_SCALE")
     assert not hasattr(parser_api, "VSRC_LOOP_RESIDUAL_ABS_TOL")
 

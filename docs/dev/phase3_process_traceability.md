@@ -11,8 +11,8 @@ This record anchors Phase 3 governance assumptions, evidence artifacts, and CI l
 
 ## Scope Boundaries
 
-- `in_scope`: Phase 3 gate/bootstrap artifacts, contract-surface governance, anti-tamper enforcement, path-aware optional-track activation policy, CI informational/blocking links, and the governed P3-01 design-bundle contract surface.
-- `out_of_scope`: hierarchy, model-card, template, and optional-track implementation work beyond the current design-bundle loader scope.
+- `in_scope`: Phase 3 gate/bootstrap artifacts, contract-surface governance, anti-tamper enforcement, path-aware optional-track activation policy, CI informational/blocking links, the governed P3-01 design-bundle contract surface, and the P3-02 hierarchy grammar/schema extension on that same surface.
+- `out_of_scope`: hierarchy elaboration, model-card, template, and optional-track implementation work beyond the current parser/schema scope.
 
 ## Governance Links
 
@@ -24,6 +24,7 @@ This record anchors Phase 3 governance assumptions, evidence artifacts, and CI l
 - `phase3_change_surface_schema`: `docs/dev/phase3_change_surface_schema_v1.json`
 - `phase3_contract_surface_rule_table`: `docs/dev/phase3_contract_surface_governance_rules.yaml`
 - `design_bundle_contract`: `docs/dev/design_bundle_contract.md`
+- `design_bundle_schema_evolution`: `docs/dev/p3_02_design_bundle_schema_evolution.md`
 - `design_bundle_schema`: `docs/spec/schemas/design_bundle_v1.json`
 - `design_bundle_interim_exclusions`: `docs/dev/p3_loader_temporary_exclusions.yaml`
 - `optional_track_policy`: `docs/dev/optional_track_activation_policy.md`

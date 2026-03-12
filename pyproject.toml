@@ -1,6 +1,6 @@
 [project]
 name = "rfmna"
-version = "0.1.3"
+version = "0.1.4"
 description = "Personal RF MNA solver"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
@@ -37,4 +37,4 @@ packages = ["src/rfmna"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/rfmna/parser/resources/p3_loader_temporary_exclusions.yaml" = "rfmna/parser/resources/p3_loader_temporary_exclusions.yaml"
-"docs/spec/schemas/design_bundle_v1.json" = "rfmna/parser/resources/design_bundle_v1.json"
+"src/rfmna/parser/resources/design_bundle_v1.json" = "rfmna/parser/resources/design_bundle_v1.json"

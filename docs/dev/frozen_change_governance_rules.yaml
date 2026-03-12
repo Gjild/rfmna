@@ -31,6 +31,10 @@
           "path_glob": "docs/spec/schemas/design_bundle_v1.json",
           "line_tokens_any": ["\"port\": {", "\"p_plus\": {", "\"p_minus\": {", "\"z0_ohm\": {"]
         },
+        {
+          "path_glob": "src/rfmna/parser/resources/design_bundle_v1.json",
+          "line_tokens_any": ["\"port\": {", "\"p_plus\": {", "\"p_minus\": {", "\"z0_ohm\": {"]
+        },
         {"path_glob": "src/rfmna/rf_metrics/boundary.py"},
         {"path_glob": "src/rfmna/rf_metrics/s_params.py"},
         {"path_glob": "src/rfmna/rf_metrics/impedance.py"},
@@ -103,6 +107,17 @@
             "\"GHz\""
           ]
         },
+        {
+          "path_glob": "src/rfmna/parser/resources/design_bundle_v1.json",
+          "line_tokens_any": [
+            "\"frequency_value\": {",
+            "\"frequency_sweep\": {",
+            "\"Hz\"",
+            "\"kHz\"",
+            "\"MHz\"",
+            "\"GHz\""
+          ]
+        },
         {"path_glob": "src/rfmna/sweep_engine/frequency_grid.py"},
         {
           "path_glob": "src/rfmna/parser/design_bundle.py",
@@ -128,6 +143,26 @@
             "highest-version inference"
           ]
         },
+        {
+          "path_glob": "src/rfmna/parser/resources/design_bundle_v1.json",
+          "line_tokens_any": [
+            "\"x-compatibility-policy\": {",
+            "\"active_default_version\":",
+            "highest-version inference"
+          ]
+        },
+        {
+          "path_glob": "src/rfmna/parser/design_bundle.py",
+          "line_tokens_any": [
+            "def load_design_bundle_document(design: str | Path) -> ParsedDesignBundle:",
+            "def _parse_validated_bundle_document(",
+            "def _build_parsed_bundle(",
+            "include_top_level_hierarchy_runnable_checks: bool = False,",
+            "if include_top_level_hierarchy_runnable_checks and document.instances:",
+            "def _hierarchy_top_level_instances_unsupported_diagnostic(",
+            "code=\"E_CLI_DESIGN_HIERARCHY_UNSUPPORTED\","
+          ]
+        },
         {"path_glob": "src/rfmna/cli/main.py"}
       ]
     },
@@ -143,12 +178,26 @@
             "ordering semantics"
           ]
         },
+        {
+          "path_glob": "src/rfmna/parser/resources/design_bundle_v1.json",
+          "line_tokens_any": [
+            "\"x-compatibility-policy\": {",
+            "\"breaking_changes\":",
+            "ordering semantics"
+          ]
+        },
         {"path_glob": "src/rfmna/sweep_engine/types.py"},
         {"path_glob": "src/rfmna/viz_io/rf_export.py"},
         {"path_glob": "src/rfmna/viz_io/manifest.py"},
         {
           "path_glob": "src/rfmna/parser/design_bundle.py",
           "line_tokens_any": [
+            "def canonical_bundle_parse_product_json(document: BundleDocument) -> str:",
+            "def hash_bundle_parse_product(document: BundleDocument) -> str:",
+            "def _canonical_bundle_parse_product_payload(document: BundleDocument) -> dict[str, object]:",
+            "\"declared_nodes\": list(document.declared_nodes),",
+            "\"elements\": [",
+            "\"ports\": [",
             "ports=rf_ports,",
             "rf_ports=ir.ports,",
             "rf_z0_ohm=_canonical_rf_z0(ir.ports),",

@@ -225,6 +225,30 @@ def test_frozen_rule_table_detects_design_bundle_schema_tokens_for_frozen_ids() 
     assert _FROZEN_ID_API_ORDERING in touched
 
 
+def test_frozen_rule_table_detects_packaged_design_bundle_schema_tokens_for_frozen_ids() -> None:
+    repo_root = _repo_root()
+    rules = _load_rule_table(repo_root / "docs/dev/frozen_change_governance_rules.yaml").rules
+
+    touched = derive_touched_frozen_ids(
+        changed_paths=("src/rfmna/parser/resources/design_bundle_v1.json",),
+        changed_lines_by_path={
+            "src/rfmna/parser/resources/design_bundle_v1.json": (
+                '    "port": {',
+                '    "frequency_sweep": {',
+                '  "x-compatibility-policy": {',
+                '    "active_default_version": "v1 selected by explicit schema/schema_version pair; no filename-based or highest-version inference is permitted",',
+                '    "breaking_changes": "changing required fields, ordering semantics, version-selection policy, or ac sweep interpretation requires a new schema version and governance review"',
+            )
+        },
+        rules=rules,
+    )
+
+    assert _FROZEN_ID_PORT_WAVE in touched
+    assert _FROZEN_ID_FREQUENCY_GRAMMAR in touched
+    assert _FROZEN_ID_CLI_EXIT in touched
+    assert _FROZEN_ID_API_ORDERING in touched
+
+
 def test_frozen_rule_table_detects_loader_parser_tokens_for_frozen_ids() -> None:
     repo_root = _repo_root()
     rules = _load_rule_table(repo_root / "docs/dev/frozen_change_governance_rules.yaml").rules
@@ -244,6 +268,50 @@ def test_frozen_rule_table_detects_loader_parser_tokens_for_frozen_ids() -> None
     assert _FROZEN_ID_PORT_WAVE in touched
     assert _FROZEN_ID_FREQUENCY_GRAMMAR in touched
     assert _FROZEN_ID_API_ORDERING in touched
+
+
+def test_frozen_rule_table_detects_parse_product_tokens_for_api_ordering_id() -> None:
+    repo_root = _repo_root()
+    rules = _load_rule_table(repo_root / "docs/dev/frozen_change_governance_rules.yaml").rules
+
+    touched = derive_touched_frozen_ids(
+        changed_paths=("src/rfmna/parser/design_bundle.py",),
+        changed_lines_by_path={
+            "src/rfmna/parser/design_bundle.py": (
+                "def canonical_bundle_parse_product_json(document: BundleDocument) -> str:",
+                "def hash_bundle_parse_product(document: BundleDocument) -> str:",
+                "def _canonical_bundle_parse_product_payload(document: BundleDocument) -> dict[str, object]:",
+                '"declared_nodes": list(document.declared_nodes),',
+                '"ports": [',
+            )
+        },
+        rules=rules,
+    )
+
+    assert touched == (_FROZEN_ID_API_ORDERING,)
+
+
+def test_frozen_rule_table_detects_parser_hierarchy_admission_tokens_for_cli_exit_id() -> None:
+    repo_root = _repo_root()
+    rules = _load_rule_table(repo_root / "docs/dev/frozen_change_governance_rules.yaml").rules
+
+    touched = derive_touched_frozen_ids(
+        changed_paths=("src/rfmna/parser/design_bundle.py",),
+        changed_lines_by_path={
+            "src/rfmna/parser/design_bundle.py": (
+                "def load_design_bundle_document(design: str | Path) -> ParsedDesignBundle:",
+                "def _parse_validated_bundle_document(",
+                "def _build_parsed_bundle(",
+                "include_top_level_hierarchy_runnable_checks: bool = False,",
+                "if include_top_level_hierarchy_runnable_checks and document.instances:",
+                "def _hierarchy_top_level_instances_unsupported_diagnostic(",
+                'code="E_CLI_DESIGN_HIERARCHY_UNSUPPORTED",',
+            )
+        },
+        rules=rules,
+    )
+
+    assert touched == (_FROZEN_ID_CLI_EXIT,)
 
 
 def test_frozen_rule_table_detects_loader_bridge_tokens_for_port_and_fail_sentinel_ids() -> None:

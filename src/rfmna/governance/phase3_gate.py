@@ -57,7 +57,7 @@ _PHASE3_CHANGE_SURFACE_EVIDENCE_KEYS: Final[tuple[str, ...]] = (
 _PHASE3_ALLOWED_EVIDENCE_ITEMS: Final[set[str]] = set(_PHASE3_CHANGE_SURFACE_EVIDENCE_KEYS)
 _PHASE3_EVIDENCE_ALLOWED_PREFIXES: Final[dict[str, tuple[str, ...]]] = {
     "policy_docs": ("docs/dev/",),
-    "schema_artifacts": ("docs/dev/", "docs/spec/schemas/"),
+    "schema_artifacts": ("docs/dev/", "docs/spec/schemas/", "src/rfmna/parser/resources/"),
     "conformance_updates": ("tests/conformance/",),
     "ci_enforcement": (".github/workflows/",),
     "process_traceability": ("docs/dev/",),
@@ -75,6 +75,7 @@ _PHASE3_PROCESS_TRACEABILITY_DOC: Final[str] = "docs/dev/phase3_process_traceabi
 _PHASE3_CHANGE_SURFACE_SCHEMA_DOC: Final[str] = "docs/dev/phase3_change_surface_schema_v1.json"
 _OPTIONAL_TRACK_SCHEMA_DOC: Final[str] = "docs/dev/optional_track_activation_schema_v1.json"
 _DESIGN_BUNDLE_SCHEMA_DOC: Final[str] = "docs/spec/schemas/design_bundle_v1.json"
+_PACKAGED_DESIGN_BUNDLE_SCHEMA_DOC: Final[str] = "src/rfmna/parser/resources/design_bundle_v1.json"
 _LOADER_TEMP_EXCLUSIONS_SCHEMA_DOC: Final[str] = "docs/dev/p3_loader_temporary_exclusions_schema_v1.json"
 _REQUIRED_CANONICAL_POLICY_PATHS: Final[tuple[str, ...]] = (
     _PHASE3_POLICY_DOC,
@@ -1330,6 +1331,12 @@ def _load_json_mapping(path: Path, *, label: str) -> Mapping[str, object]:
     return payload
 
 
+def _expected_schema_artifact_id(rel_path: str) -> str:
+    if rel_path == _PACKAGED_DESIGN_BUNDLE_SCHEMA_DOC:
+        return _DESIGN_BUNDLE_SCHEMA_DOC
+    return rel_path
+
+
 def _validate_json_schema_document_shape(
     payload: Mapping[str, object],
     *,
@@ -1338,8 +1345,12 @@ def _validate_json_schema_document_shape(
     errors: list[str] = []
     if payload.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
         errors.append(f"schema artifact must declare draft 2020-12 JSON Schema: {rel_path}")
-    if payload.get("$id") != rel_path:
-        errors.append(f"schema artifact $id must match repo-relative path: {rel_path}")
+    expected_schema_id = _expected_schema_artifact_id(rel_path)
+    if payload.get("$id") != expected_schema_id:
+        errors.append(
+            "schema artifact $id must match canonical schema id: "
+            f"{rel_path} -> {expected_schema_id}"
+        )
     title = payload.get("title")
     if not isinstance(title, str) or not title:
         errors.append(f"schema artifact title must be a non-empty string: {rel_path}")

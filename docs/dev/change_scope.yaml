@@ -1,28 +1,20 @@
 {
   "schema_version": 1,
-  "declared_frozen_ids": [
-    3,
-    8,
-    9
-    ,
-    10,
-    11
-  ],
+  "declared_frozen_ids": [3, 8, 9, 10],
   "evidence": {
-    "semver_bump": {
-      "from_version": "0.1.2",
-      "to_version": "0.1.3"
-    },
+    "semver_bump": {"from_version": "0.1.3", "to_version": "0.1.4"},
     "decision_records": [
-      "docs/spec/decision_records/2026-03-07-p3-01-design-bundle-loader-cli-governance.md"
+      "docs/spec/decision_records/2026-03-10-p3-02-hierarchy-schema-governance.md"
     ],
     "conformance_updates": [
-      "tests/conformance/test_design_bundle_loader_conformance.py"
+      "tests/conformance/test_design_bundle_hierarchy_conformance.py",
+      "tests/conformance/test_phase2_governance_conformance.py",
+      "tests/conformance/test_phase3_gate_conformance.py"
     ],
     "migration_notes": [
-      "docs/spec/migration_notes/2026-03-07-v0-1-3-p3-01-design-bundle-loader-cli.md"
+      "docs/spec/migration_notes/2026-03-10-v0-1-4-p3-02-hierarchy-schema-governance.md"
     ],
-    "reproducibility_impact_statement_path": "docs/dev/reproducibility_impact_p3_01.md"
+    "reproducibility_impact_statement_path": "docs/dev/reproducibility_impact_p3_02.md"
   },
-  "notes": "P3-01 replaces the CLI loader stub with the governed design-bundle loader path. Frozen artifacts #3/#8/#9/#10/#11 are declared because the design-bundle schema and loader-backed CLI bridge now carry authoritative port, frequency-grammar, version-selection/ordering, and fail-sentinel execution surface; the decision record and contract doc classify #3/#8/#10/#11 as no semantic change and #9 as touched-path no-behavior-change."
+  "notes": "P3-02 takes the strict additive-v1 hierarchy path. Frozen-scope detection for artifacts #3/#8/#9/#10 is exercised both by the newly tracked packaged runtime schema mirror and by parser contract touchpoints in src/rfmna/parser/design_bundle.py, with semantic non-impact documented in docs/dev/p3_02_design_bundle_schema_evolution.md; existing flat-input ordering semantics, including subcircuit-local flat element order, remain unchanged."
 }

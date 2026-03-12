@@ -13,6 +13,7 @@ from rfmna.governance.phase2_gate import (
     FrozenRule,
     GovernanceArtifactPaths,
     _load_rule_table,
+    derive_touched_frozen_ids,
     evaluate_category_bootstrap_gate,
     evaluate_governance_gate,
 )
@@ -46,6 +47,23 @@ _PHASE3_SURFACE_EVIDENCE = {
     "process_traceability": ["docs/dev/phase3_process_traceability.md"],
 }
 
+_DESIGN_BUNDLE_SURFACE_EVIDENCE = {
+    "policy_docs": [
+        "docs/dev/design_bundle_contract.md",
+        "docs/dev/p3_02_design_bundle_schema_evolution.md",
+    ],
+    "schema_artifacts": [
+        "docs/dev/p3_loader_temporary_exclusions_schema_v1.json",
+        "docs/spec/schemas/design_bundle_v1.json",
+        "src/rfmna/parser/resources/design_bundle_v1.json",
+    ],
+    "conformance_updates": [
+        "tests/conformance/test_design_bundle_hierarchy_conformance.py",
+        "tests/conformance/test_design_bundle_loader_conformance.py",
+    ],
+    "ci_enforcement": [],
+    "process_traceability": ["docs/dev/phase3_process_traceability.md"],
+}
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -312,6 +330,47 @@ def test_phase3_contract_surface_rule_table_detects_packaged_exclusion_mirror_ch
     assert touched == ("design_bundle_contract",)
 
 
+def test_phase3_contract_surface_rule_table_treats_packaged_schema_mirror_as_required_surface_artifact() -> None:
+    repo_root = _repo_root()
+    rule_table = _load_phase3_rule_table(
+        repo_root / "docs/dev/phase3_contract_surface_governance_rules.yaml",
+        frozen_rules=None,
+    )
+    required_schema_artifacts = rule_table.surface_rules["design_bundle_contract"].required_artifact_paths[
+        "schema_artifacts"
+    ]
+    assert "src/rfmna/parser/resources/design_bundle_v1.json" in required_schema_artifacts
+    touched = derive_touched_phase3_surface_ids(
+        changed_paths=("src/rfmna/parser/resources/design_bundle_v1.json",),
+        changed_lines_by_path={},
+        rules=rule_table.surface_rules,
+    )
+    assert touched == ("design_bundle_contract",)
+    frozen_rules = _load_rule_table(repo_root / "docs/dev/frozen_change_governance_rules.yaml").rules
+    touched_frozen_ids = derive_touched_frozen_ids(
+        changed_paths=("src/rfmna/parser/resources/design_bundle_v1.json",),
+        changed_lines_by_path={
+            "src/rfmna/parser/resources/design_bundle_v1.json": (
+                '    "port": {',
+                '    "frequency_sweep": {',
+                '  "x-compatibility-policy": {',
+                '    "active_default_version": "v1 selected by explicit schema/schema_version pair; no filename-based or highest-version inference is permitted",',
+                '    "breaking_changes": "changing required fields, ordering semantics, version-selection policy, or ac sweep interpretation requires a new schema version and governance review"',
+            )
+        },
+        rules=frozen_rules,
+    )
+    assert touched_frozen_ids == (3, 8, 9, 10)
+
+
+def test_phase3_change_surface_policy_allows_packaged_parser_schema_artifacts() -> None:
+    policy_text = (_repo_root() / "docs/dev/phase3_change_surface_policy.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "src/rfmna/parser/resources/" in policy_text
+
+
 def test_phase3_contract_surface_rule_table_ignores_frozen_only_loader_bridge_path() -> None:
     repo_root = _repo_root()
     rule_table = _load_phase3_rule_table(
@@ -369,16 +428,7 @@ def test_phase3_contract_surface_gate_accepts_docs_spec_schema_artifacts_for_des
     change_surface_path = _write_phase3_change_surface(
         tmp_path,
         declared_surface_ids=["design_bundle_contract"],
-        evidence={
-            "policy_docs": ["docs/dev/design_bundle_contract.md"],
-            "schema_artifacts": [
-                "docs/dev/p3_loader_temporary_exclusions_schema_v1.json",
-                "docs/spec/schemas/design_bundle_v1.json",
-            ],
-            "conformance_updates": ["tests/conformance/test_design_bundle_loader_conformance.py"],
-            "ci_enforcement": [],
-            "process_traceability": ["docs/dev/phase3_process_traceability.md"],
-        },
+        evidence=_DESIGN_BUNDLE_SURFACE_EVIDENCE,
     )
     result = evaluate_contract_surface_governance_gate(
         repo_root=repo_root,
@@ -402,16 +452,7 @@ def test_phase3_contract_surface_gate_accepts_schema_only_design_bundle_surface_
     change_surface_path = _write_phase3_change_surface(
         tmp_path,
         declared_surface_ids=["design_bundle_contract"],
-        evidence={
-            "policy_docs": ["docs/dev/design_bundle_contract.md"],
-            "schema_artifacts": [
-                "docs/dev/p3_loader_temporary_exclusions_schema_v1.json",
-                "docs/spec/schemas/design_bundle_v1.json",
-            ],
-            "conformance_updates": ["tests/conformance/test_design_bundle_loader_conformance.py"],
-            "ci_enforcement": [],
-            "process_traceability": ["docs/dev/phase3_process_traceability.md"],
-        },
+        evidence=_DESIGN_BUNDLE_SURFACE_EVIDENCE,
     )
     result = evaluate_contract_surface_governance_gate(
         repo_root=repo_root,
@@ -425,30 +466,22 @@ def test_phase3_contract_surface_gate_accepts_schema_only_design_bundle_surface_
         change_surface_path.unlink(missing_ok=True)
 
 
-def test_phase3_contract_surface_gate_accepts_actual_p3_01_path_mix(
+def test_phase3_contract_surface_gate_accepts_checked_in_design_bundle_path_mix(
     tmp_path: Path,
 ) -> None:
     repo_root = _repo_root()
     change_surface_path = _write_phase3_change_surface(
         tmp_path,
         declared_surface_ids=["design_bundle_contract"],
-        evidence={
-            "policy_docs": ["docs/dev/design_bundle_contract.md"],
-            "schema_artifacts": [
-                "docs/dev/p3_loader_temporary_exclusions_schema_v1.json",
-                "docs/spec/schemas/design_bundle_v1.json",
-            ],
-            "conformance_updates": ["tests/conformance/test_design_bundle_loader_conformance.py"],
-            "ci_enforcement": [],
-            "process_traceability": ["docs/dev/phase3_process_traceability.md"],
-        },
+        evidence=_DESIGN_BUNDLE_SURFACE_EVIDENCE,
     )
     result = evaluate_contract_surface_governance_gate(
         repo_root=repo_root,
         changed_paths=(
+            "docs/dev/design_bundle_contract.md",
+            "docs/dev/p3_02_design_bundle_schema_evolution.md",
             "docs/spec/schemas/design_bundle_v1.json",
-            "src/rfmna/cli/main.py",
-            "src/rfmna/parser/design_bundle.py",
+            "tests/conformance/test_design_bundle_hierarchy_conformance.py",
             "tests/conformance/test_design_bundle_loader_conformance.py",
         ),
         artifact_paths=_phase3_artifact_paths(phase3_change_surface_path=str(change_surface_path)),

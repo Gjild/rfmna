@@ -20,6 +20,7 @@ from .sources import (
     VoltageSourceIndexer,
     VoltageSourceStamp,
 )
+from .validation import validate_resolved_supported_element_model
 
 __all__ = [
     "CapacitorStamp",
@@ -43,6 +44,7 @@ __all__ = [
     "canonicalize_indices",
     "canonicalize_matrix_entries",
     "canonicalize_rhs_entries",
+    "validate_resolved_supported_element_model",
     "VCCSIndexer",
     "VCCSStamp",
     "VCVSIndexer",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import errno
 import json
+import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final, cast
@@ -15,7 +16,6 @@ from rfmna.cli import design_loader as cli_design_loader
 from rfmna.cli import main as cli_main
 from rfmna.diagnostics import build_diagnostic_event
 from rfmna.ir import hash_canonical_ir
-from rfmna.parser import DESIGN_BUNDLE_SCHEMA_ID, DesignBundleLoadError, load_design_bundle_document
 from rfmna.parser import design_bundle as parser_design_bundle_module
 from rfmna.parser._loader_exclusions_runtime import (
     LOADER_TEMP_EXCLUSIONS_ARTIFACT_SOURCE,
@@ -23,6 +23,11 @@ from rfmna.parser._loader_exclusions_runtime import (
     load_packaged_loader_temp_exclusions_payload_text,
     repo_loader_temp_exclusions_artifact_path,
     source_tree_loader_temp_exclusions_resource_path,
+)
+from rfmna.parser.design_bundle import (
+    DESIGN_BUNDLE_SCHEMA_ID,
+    DesignBundleLoadError,
+    load_design_bundle_document,
 )
 
 pytestmark = pytest.mark.unit
@@ -375,7 +380,16 @@ def test_loader_runtime_schema_contract_is_derived_from_design_bundle_schema_art
 
     assert contract.root_allowed_keys == ("analysis", "design", "schema", "schema_version")
     assert contract.root_required_keys == ("schema", "schema_version", "design", "analysis")
-    assert contract.design_allowed_keys == ("elements", "nodes", "parameters", "ports", "reference_node")
+    assert contract.design_allowed_keys == (
+        "elements",
+        "instances",
+        "macros",
+        "nodes",
+        "parameters",
+        "ports",
+        "reference_node",
+        "subcircuits",
+    )
     assert contract.design_required_keys == ("reference_node", "elements")
     assert contract.analysis_allowed_keys == ("frequency_sweep", "parameter_sweeps", "type")
     assert contract.analysis_required_keys == ("type", "frequency_sweep")
@@ -388,6 +402,7 @@ def test_loader_runtime_schema_contract_is_derived_from_design_bundle_schema_art
     assert contract.supported_kind_required_params["VCVS"] == ("gain_mu",)
     assert contract.frequency_sweep_modes == ("linear", "log")
     assert contract.frequency_units == ("Hz", "kHz", "MHz", "GHz")
+    assert contract.hierarchy_instance_types == ("macro", "subcircuit")
 
 
 def test_schema_artifact_and_loader_both_reject_whitespace_only_strings(tmp_path: Path) -> None:
@@ -603,6 +618,129 @@ def test_loader_reads_source_tree_resource_when_governed_artifact_is_absent(
     )
 
     assert payload == resource_payload
+
+
+def test_loader_reads_packaged_schema_resource_when_repo_schema_and_source_tree_schema_are_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing_path = tmp_path / "no-such-parent" / "design_bundle_v1.json"
+    monkeypatch.setattr(
+        parser_design_bundle_module,
+        "_repo_design_bundle_schema_artifact_path",
+        lambda: missing_path,
+    )
+    monkeypatch.setattr(
+        parser_design_bundle_module,
+        "_source_tree_design_bundle_schema_resource_path",
+        lambda: missing_path,
+    )
+    parser_design_bundle_module._load_design_bundle_schema_contract.cache_clear()
+
+    try:
+        payload = json.loads(
+            parser_design_bundle_module._load_packaged_design_bundle_schema_payload_text()
+        )
+    finally:
+        parser_design_bundle_module._load_design_bundle_schema_contract.cache_clear()
+
+    resource_payload = json.loads(
+        (
+            Path(__file__).resolve().parents[2]
+            / "src/rfmna/parser/resources/design_bundle_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert payload == resource_payload
+
+
+def test_loader_uses_governed_schema_artifact_when_packaged_schema_mirror_drifts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    design_path = _write_bundle(tmp_path, _base_bundle(), name="supported.json")
+    governed_schema_path = tmp_path / "design_bundle_v1.json"
+    packaged_schema_path = tmp_path / "packaged_design_bundle_v1.json"
+    governed_schema = json.loads(
+        (Path(__file__).resolve().parents[2] / "docs/spec/schemas/design_bundle_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    packaged_schema = json.loads(json.dumps(governed_schema))
+    governed_properties = governed_schema["properties"]
+    assert isinstance(governed_properties, dict)
+    governed_properties["test_only"] = {
+        "type": "object",
+        "additionalProperties": True,
+    }
+    governed_schema["additionalProperties"] = False
+    payload = _base_bundle()
+    payload["test_only"] = {"flag": True}
+    design_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    governed_schema_path.write_text(json.dumps(governed_schema, indent=2), encoding="utf-8")
+    packaged_schema_path.write_text(json.dumps(packaged_schema, indent=2), encoding="utf-8")
+    monkeypatch.setattr(
+        parser_design_bundle_module,
+        "_repo_design_bundle_schema_artifact_path",
+        lambda: governed_schema_path,
+    )
+    monkeypatch.setattr(
+        parser_design_bundle_module,
+        "_load_packaged_design_bundle_schema_payload_text",
+        lambda: packaged_schema_path.read_text(encoding="utf-8"),
+    )
+    parser_design_bundle_module._load_design_bundle_schema_contract.cache_clear()
+
+    try:
+        parsed = load_design_bundle_document(design_path)
+    finally:
+        parser_design_bundle_module._load_design_bundle_schema_contract.cache_clear()
+
+    assert tuple(node.node_id for node in parsed.ir.nodes) == ("0", "n1")
+
+
+def test_loader_uses_governed_schema_artifact_when_packaged_schema_mirror_is_missing_in_source_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    design_path = _write_bundle(tmp_path, _base_bundle(), name="supported.json")
+    governed_schema_path = tmp_path / "design_bundle_v1.json"
+    governed_schema_path.write_text(
+        (
+            Path(__file__).resolve().parents[2] / "docs/spec/schemas/design_bundle_v1.json"
+        ).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        parser_design_bundle_module,
+        "_repo_design_bundle_schema_artifact_path",
+        lambda: governed_schema_path,
+    )
+    monkeypatch.setattr(
+        parser_design_bundle_module,
+        "_load_packaged_design_bundle_schema_payload_text",
+        lambda: (_ for _ in ()).throw(FileNotFoundError("missing packaged schema mirror")),
+    )
+    parser_design_bundle_module._load_design_bundle_schema_contract.cache_clear()
+
+    try:
+        parsed = load_design_bundle_document(design_path)
+    finally:
+        parser_design_bundle_module._load_design_bundle_schema_contract.cache_clear()
+
+    assert parsed.rf_z0_ohm == _DEFAULT_RF_Z0_OHM
+
+
+def test_wheel_force_includes_tracked_runtime_schema_mirror_from_src_tree() -> None:
+    pyproject = tomllib.loads(
+        (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8")
+    )
+
+    force_include = pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+
+    assert (
+        force_include["src/rfmna/parser/resources/design_bundle_v1.json"]
+        == "rfmna/parser/resources/design_bundle_v1.json"
+    )
+    assert "docs/spec/schemas/design_bundle_v1.json" not in force_include
+    assert tuple(force_include.values()).count("rfmna/parser/resources/design_bundle_v1.json") == 1
 
 
 def test_loader_fails_closed_when_no_runtime_exclusions_source_exists_in_installed_mode(

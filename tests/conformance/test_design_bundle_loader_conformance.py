@@ -9,7 +9,11 @@ import pytest
 from typer.testing import CliRunner
 
 from rfmna.cli import main as cli_main
-from rfmna.parser import DESIGN_BUNDLE_SCHEMA_ID, load_design_bundle_document
+from rfmna.parser import (
+    DESIGN_BUNDLE_SCHEMA_ID,
+    load_design_bundle_document,
+)
+from rfmna.parser.design_bundle import parse_design_bundle_document
 
 pytestmark = pytest.mark.conformance
 
@@ -144,6 +148,24 @@ def test_design_bundle_schema_artifact_location_and_version_are_canonical() -> N
     assert schema["$id"] == DESIGN_BUNDLE_SCHEMA_ID
     assert schema["properties"]["schema"]["const"] == DESIGN_BUNDLE_SCHEMA_ID
     assert schema["properties"]["schema_version"]["const"] == 1
+
+
+def test_packaged_schema_mirror_is_byte_aligned_with_governed_schema_artifact() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    governed_schema = (repo_root / "docs/spec/schemas/design_bundle_v1.json").read_bytes()
+    packaged_schema = (repo_root / "src/rfmna/parser/resources/design_bundle_v1.json").read_bytes()
+
+    assert packaged_schema == governed_schema
+
+
+def test_design_bundle_module_exposes_loader_and_parse_helpers(tmp_path: Path) -> None:
+    design_path = _write_bundle(tmp_path, _base_bundle(), name="design_bundle_module_api.json")
+
+    parsed = load_design_bundle_document(design_path)
+    document = parse_design_bundle_document(design_path)
+
+    assert tuple(node.node_id for node in parsed.ir.nodes) == ("0", "n1")
+    assert document.reference_node == "0"
 
 
 def test_design_bundle_schema_artifact_encodes_supported_kind_arity_and_required_params() -> None:

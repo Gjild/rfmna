@@ -9,7 +9,11 @@ import pytest
 from typer.testing import CliRunner
 
 from rfmna.cli import main as cli_main
-from rfmna.parser import DESIGN_BUNDLE_SCHEMA_ID
+from rfmna.parser.design_bundle import (
+    DESIGN_BUNDLE_SCHEMA_ID,
+    DesignBundleLoadError,
+    parse_design_bundle_document,
+)
 from rfmna.viz_io import build_manifest
 
 pytestmark = pytest.mark.regression
@@ -17,6 +21,7 @@ pytestmark = pytest.mark.regression
 runner = CliRunner()
 _EXIT_FAILURE: Final[int] = 2
 _TWO_POINTS: Final[int] = 2
+_DEEP_HIERARCHY_DEPTH: Final[int] = 1300
 
 
 def _supported_bundle() -> dict[str, object]:
@@ -122,11 +127,124 @@ def _excluded_bundle() -> dict[str, object]:
     }
 
 
+def _invalid_unused_hierarchy_bundle() -> dict[str, object]:
+    payload = _supported_bundle()
+    design = payload["design"]
+    assert isinstance(design, dict)
+    design["subcircuits"] = [
+        {
+            "id": "gain-stage",
+            "ports": ["in", "out", "0"],
+            "parameters": {"r_bias": 100.0},
+            "elements": [
+                {
+                    "id": "Rbias",
+                    "kind": "R",
+                    "nodes": ["out", "0"],
+                    "params": {"resistance_ohm": "missing_param + 1"},
+                }
+            ],
+            "instances": [],
+        }
+    ]
+    return payload
+
+
+def _invalid_macro_default_key_bundle() -> dict[str, object]:
+    payload = _supported_bundle()
+    design = payload["design"]
+    assert isinstance(design, dict)
+    design["macros"] = [
+        {
+            "id": "res-load",
+            "kind": "R",
+            "node_formals": ["p", "n"],
+            "params": {"bogus": 1.0},
+        }
+    ]
+    return payload
+
+
+def _invalid_unused_macro_default_value_bundle() -> dict[str, object]:
+    payload = _supported_bundle()
+    design = payload["design"]
+    assert isinstance(design, dict)
+    design["macros"] = [
+        {
+            "id": "res-load",
+            "kind": "R",
+            "node_formals": ["p", "n"],
+            "params": {"resistance_ohm": 0.0},
+        }
+    ]
+    return payload
+
+
+def _top_level_instance_bundle() -> dict[str, object]:
+    payload = _supported_bundle()
+    design = payload["design"]
+    assert isinstance(design, dict)
+    design["macros"] = [
+        {
+            "id": "res-load",
+            "kind": "R",
+            "node_formals": ["p", "n"],
+            "params": {"resistance_ohm": 75.0},
+        }
+    ]
+    design["instances"] = [
+        {
+            "id": "Xload",
+            "instance_type": "macro",
+            "of": "res-load",
+            "nodes": ["n1", "0"],
+        }
+    ]
+    return payload
+
+
 def _invalid_port_z0_bundle() -> dict[str, object]:
     payload = _supported_bundle()
     design = payload["design"]
     assert isinstance(design, dict)
     design["ports"] = [{"id": "P1", "p_plus": "n1", "p_minus": "0", "z0_ohm": -5.0}]
+    return payload
+
+
+def _deep_hierarchy_bundle(*, depth: int, cyclic: bool) -> dict[str, object]:
+    subcircuits: list[dict[str, object]] = []
+    for index in range(depth):
+        instances: list[dict[str, object]] = []
+        if index + 1 < depth:
+            instances.append(
+                {
+                    "id": f"X{index + 1}",
+                    "instance_type": "subcircuit",
+                    "of": f"stage-{index + 1}",
+                    "nodes": ["in", "out", "0"],
+                }
+            )
+        elif cyclic:
+            instances.append(
+                {
+                    "id": "X0",
+                    "instance_type": "subcircuit",
+                    "of": "stage-0",
+                    "nodes": ["in", "out", "0"],
+                }
+            )
+        subcircuits.append(
+            {
+                "id": f"stage-{index}",
+                "ports": ["in", "out", "0"],
+                "elements": [],
+                "instances": instances,
+            }
+        )
+    payload = _supported_bundle()
+    design = payload["design"]
+    assert isinstance(design, dict)
+    design["subcircuits"] = subcircuits
     return payload
 
 
@@ -210,6 +328,146 @@ def test_loader_backed_check_preserves_specific_port_z0_failure_code(tmp_path: P
     }
 
 
+def test_loader_backed_commands_reject_invalid_unused_hierarchy_declarations(
+    tmp_path: Path,
+) -> None:
+    design_path = _write_bundle(
+        tmp_path,
+        _invalid_unused_hierarchy_bundle(),
+        name="invalid_unused_hierarchy.json",
+    )
+
+    check_result = runner.invoke(cli_main.app, ["check", design_path.as_posix(), "--format", "json"])
+    run_result = runner.invoke(cli_main.app, ["run", design_path.as_posix(), "--analysis", "ac"])
+
+    assert check_result.exit_code == _EXIT_FAILURE
+    check_payload = json.loads(check_result.stdout)
+    assert check_payload["status"] == "fail"
+    assert check_payload["diagnostics"][0]["code"] == "E_CLI_DESIGN_VALUE_INVALID"
+    assert check_payload["diagnostics"][0]["witness"] == {
+        "input_text": "missing_param + 1",
+        "path": "design.subcircuits[gain-stage].elements[Rbias].params.resistance_ohm",
+        "source_code": "E_PARSE_PARAM_UNDEFINED",
+        "witness": ["missing_param"],
+    }
+
+    assert run_result.exit_code == _EXIT_FAILURE
+    assert "E_CLI_DESIGN_VALUE_INVALID" in run_result.stdout
+
+
+def test_loader_backed_commands_reject_invalid_macro_default_keys(tmp_path: Path) -> None:
+    design_path = _write_bundle(
+        tmp_path,
+        _invalid_macro_default_key_bundle(),
+        name="invalid_macro_default_key.json",
+    )
+
+    check_result = runner.invoke(cli_main.app, ["check", design_path.as_posix(), "--format", "json"])
+
+    assert check_result.exit_code == _EXIT_FAILURE
+    check_payload = json.loads(check_result.stdout)
+    assert check_payload["diagnostics"][0]["code"] == "E_CLI_DESIGN_VALUE_INVALID"
+    assert check_payload["diagnostics"][0]["witness"] == {
+        "allowed_keys": ["resistance_ohm"],
+        "path": "design.macros[res-load].params",
+        "unexpected_keys": ["bogus"],
+    }
+
+
+def test_loader_backed_commands_reject_invalid_unused_macro_default_values(tmp_path: Path) -> None:
+    design_path = _write_bundle(
+        tmp_path,
+        _invalid_unused_macro_default_value_bundle(),
+        name="invalid_unused_macro_default_value.json",
+    )
+
+    check_result = runner.invoke(cli_main.app, ["check", design_path.as_posix(), "--format", "json"])
+    run_result = runner.invoke(cli_main.app, ["run", design_path.as_posix(), "--analysis", "ac"])
+
+    assert check_result.exit_code == _EXIT_FAILURE
+    check_payload = json.loads(check_result.stdout)
+    assert check_payload["status"] == "fail"
+    assert check_payload["diagnostics"][0]["code"] == "E_CLI_DESIGN_VALUE_INVALID"
+    assert check_payload["diagnostics"][0]["witness"] == {
+        "issue_code": "E_MODEL_R_NONPOSITIVE",
+        "issue_context": {"element_id": "res-load", "resistance_ohm": 0.0},
+        "path": "design.macros[res-load]",
+    }
+
+    assert run_result.exit_code == _EXIT_FAILURE
+    assert "E_CLI_DESIGN_VALUE_INVALID" in run_result.stdout
+
+
+def test_loader_backed_commands_report_exclusions_before_top_level_hierarchy_unsupported(
+    tmp_path: Path,
+) -> None:
+    payload = _top_level_instance_bundle()
+    analysis = payload["analysis"]
+    assert isinstance(analysis, dict)
+    analysis["parameter_sweeps"] = [{"parameter": "bias", "values": [1.0, 2.0]}]
+    design_path = _write_bundle(
+        tmp_path,
+        payload,
+        name="top_level_instance_with_exclusion.json",
+    )
+
+    check_result = runner.invoke(cli_main.app, ["check", design_path.as_posix(), "--format", "json"])
+
+    assert check_result.exit_code == _EXIT_FAILURE
+    check_payload = json.loads(check_result.stdout)
+    assert check_payload["diagnostics"][0]["code"] == "E_CLI_DESIGN_EXCLUDED_CAPABILITY"
+
+
+def test_loader_backed_commands_report_exclusions_before_hierarchy_value_validation(
+    tmp_path: Path,
+) -> None:
+    payload = _invalid_unused_macro_default_value_bundle()
+    analysis = payload["analysis"]
+    assert isinstance(analysis, dict)
+    analysis["parameter_sweeps"] = [{"parameter": "bias", "values": [1.0, 2.0]}]
+    design_path = _write_bundle(
+        tmp_path,
+        payload,
+        name="excluded_before_hierarchy_value_validation.json",
+    )
+
+    check_result = runner.invoke(cli_main.app, ["check", design_path.as_posix(), "--format", "json"])
+
+    assert check_result.exit_code == _EXIT_FAILURE
+    check_payload = json.loads(check_result.stdout)
+    assert check_payload["diagnostics"][0]["code"] == "E_CLI_DESIGN_EXCLUDED_CAPABILITY"
+
+
+def test_loader_backed_commands_report_invalid_top_level_instance_override_before_unsupported(
+    tmp_path: Path,
+) -> None:
+    payload = _top_level_instance_bundle()
+    design = payload["design"]
+    assert isinstance(design, dict)
+    instances = design["instances"]
+    assert isinstance(instances, list)
+    instance = instances[0]
+    assert isinstance(instance, dict)
+    instance["params"] = {"resistance_ohm": "missing_param + 1"}
+    design_path = _write_bundle(
+        tmp_path,
+        payload,
+        name="top_level_instance_invalid_override.json",
+    )
+
+    check_result = runner.invoke(cli_main.app, ["check", design_path.as_posix(), "--format", "json"])
+
+    assert check_result.exit_code == _EXIT_FAILURE
+    check_payload = json.loads(check_result.stdout)
+    assert check_payload["diagnostics"][0]["code"] == "E_CLI_DESIGN_VALUE_INVALID"
+    assert check_payload["diagnostics"][0]["witness"] == {
+        "input_text": "missing_param + 1",
+        "path": "design.instances[Xload].params.resistance_ohm",
+        "source_code": "E_PARSE_PARAM_UNDEFINED",
+        "witness": ["missing_param"],
+    }
+
+
 def test_loader_backed_manifest_hashes_track_design_contents_and_resolved_params(tmp_path: Path) -> None:
     design_path = tmp_path / "design.json"
     design_path.write_text(json.dumps(_parameterized_bundle(resistance_ohm=50.0), indent=2), encoding="utf-8")
@@ -237,6 +495,111 @@ def test_loader_backed_manifest_hashes_track_design_contents_and_resolved_params
 
     assert first_manifest.input_hash != second_manifest.input_hash
     assert first_manifest.resolved_params_hash != second_manifest.resolved_params_hash
+
+
+def test_parse_surface_handles_deep_acyclic_hierarchy_without_python_recursion_crash(
+    tmp_path: Path,
+) -> None:
+    path = _write_bundle(
+        tmp_path,
+        _deep_hierarchy_bundle(depth=_DEEP_HIERARCHY_DEPTH, cyclic=False),
+        name="deep_acyclic_hierarchy.json",
+    )
+
+    document = parse_design_bundle_document(path)
+
+    assert len(document.subcircuits) == _DEEP_HIERARCHY_DEPTH
+
+
+def test_parse_surface_reports_deep_recursive_hierarchy_with_cataloged_diagnostic(
+    tmp_path: Path,
+) -> None:
+    path = _write_bundle(
+        tmp_path,
+        _deep_hierarchy_bundle(depth=_DEEP_HIERARCHY_DEPTH, cyclic=True),
+        name="deep_recursive_hierarchy.json",
+    )
+
+    with pytest.raises(DesignBundleLoadError) as exc_info:
+        parse_design_bundle_document(path)
+
+    diagnostics = exc_info.value.diagnostics
+    assert tuple(diagnostic.code for diagnostic in diagnostics) == (
+        "E_CLI_DESIGN_HIERARCHY_RECURSION_ILLEGAL",
+    )
+    assert diagnostics[0].element_id == "hierarchy:STAGE_0"
+    assert diagnostics[0].witness == {
+        "component": sorted(f"STAGE_{index}" for index in range(_DEEP_HIERARCHY_DEPTH))
+    }
+
+
+def test_parse_surface_reports_each_equivalent_invalid_instance_path(tmp_path: Path) -> None:
+    payload = _supported_bundle()
+    design = payload["design"]
+    assert isinstance(design, dict)
+    design["subcircuits"] = [
+        {
+            "id": "inner",
+            "ports": ["in", "out", "0"],
+            "parameters": {"r": 50.0},
+            "elements": [
+                {
+                    "id": "Rsub",
+                    "kind": "R",
+                    "nodes": ["out", "0"],
+                    "params": {"resistance_ohm": "r"},
+                }
+            ],
+            "instances": [],
+        },
+        {
+            "id": "outer",
+            "ports": ["in", "out", "0"],
+            "elements": [],
+            "instances": [
+                {
+                    "id": "X1",
+                    "instance_type": "subcircuit",
+                    "of": "inner",
+                    "nodes": ["in", "out", "0"],
+                    "params": {"r": 0.0},
+                },
+                {
+                    "id": "X2",
+                    "instance_type": "subcircuit",
+                    "of": "inner",
+                    "nodes": ["in", "out", "0"],
+                    "params": {"r": 0.0},
+                },
+            ],
+        },
+    ]
+    path = _write_bundle(
+        tmp_path,
+        payload,
+        name="equivalent_invalid_instance_paths.json",
+    )
+
+    with pytest.raises(DesignBundleLoadError) as exc_info:
+        parse_design_bundle_document(path)
+
+    diagnostics = exc_info.value.diagnostics
+    assert tuple(diagnostic.code for diagnostic in diagnostics) == (
+        "E_CLI_DESIGN_VALUE_INVALID",
+        "E_CLI_DESIGN_VALUE_INVALID",
+    )
+    assert tuple(diagnostic.witness for diagnostic in diagnostics) == (
+        {
+            "issue_code": "E_MODEL_R_NONPOSITIVE",
+            "issue_context": {"element_id": "Rsub", "resistance_ohm": 0.0},
+            "path": "design.subcircuits[outer].instances[X1].target[inner].elements[Rsub]",
+        },
+        {
+            "issue_code": "E_MODEL_R_NONPOSITIVE",
+            "issue_context": {"element_id": "Rsub", "resistance_ohm": 0.0},
+            "path": "design.subcircuits[outer].instances[X2].target[inner].elements[Rsub]",
+        },
+    )
 
 
 def test_loader_backed_manifest_hashes_ignore_design_file_path_for_identical_contents(
@@ -271,3 +634,172 @@ def test_loader_backed_manifest_hashes_ignore_design_file_path_for_identical_con
 
     assert left_manifest.input_hash == right_manifest.input_hash
     assert left_manifest.resolved_params_hash == right_manifest.resolved_params_hash
+
+
+def test_loader_backed_manifest_hashes_preserve_unused_hierarchy_declaration_order(
+    tmp_path: Path,
+) -> None:
+    left_path = tmp_path / "left_hierarchy.json"
+    right_path = tmp_path / "right_hierarchy.json"
+    baseline = _parameterized_bundle(resistance_ohm=50.0)
+    left_design = baseline["design"]
+    assert isinstance(left_design, dict)
+    left_design["macros"] = [
+        {
+            "id": "bias block",
+            "kind": "R",
+            "node_formals": ["p", "n"],
+            "params": {"resistance_ohm": 100.0},
+        },
+        {
+            "id": "load cell",
+            "kind": "R",
+            "node_formals": ["p", "n"],
+            "params": {"resistance_ohm": 50.0},
+        },
+    ]
+    left_design["subcircuits"] = [
+        {
+            "id": "stage-a",
+            "ports": ["in", "out", "0"],
+            "elements": [
+                {
+                    "id": "Rmid",
+                    "kind": "R",
+                    "nodes": ["mid", "0"],
+                    "params": {"resistance_ohm": 50.0},
+                },
+                {
+                    "id": "Rout",
+                    "kind": "R",
+                    "nodes": ["out", "0"],
+                    "params": {"resistance_ohm": 75.0},
+                },
+            ],
+            "instances": [
+                {
+                    "id": "Xmid",
+                    "instance_type": "macro",
+                    "of": "bias block",
+                    "nodes": ["mid", "0"],
+                },
+                {
+                    "id": "Xout",
+                    "instance_type": "macro",
+                    "of": "load cell",
+                    "nodes": ["out", "0"],
+                },
+            ],
+        },
+        {
+            "id": "stage-b",
+            "ports": ["in", "out", "0"],
+            "elements": [
+                {
+                    "id": "Rkeep",
+                    "kind": "R",
+                    "nodes": ["in", "0"],
+                    "params": {"resistance_ohm": 60.0},
+                }
+            ],
+            "instances": [
+                {
+                    "id": "Xkeep",
+                    "instance_type": "macro",
+                    "of": "bias block",
+                    "nodes": ["out", "0"],
+                }
+            ],
+        }
+    ]
+    reordered = json.loads(json.dumps(baseline))
+    right_design = reordered["design"]
+    assert isinstance(right_design, dict)
+    right_subcircuits = right_design["subcircuits"]
+    assert isinstance(right_subcircuits, list)
+    right_stage = right_subcircuits[0]
+    assert isinstance(right_stage, dict)
+    right_stage["elements"] = list(reversed(right_stage["elements"]))
+    right_stage["instances"] = list(reversed(right_stage["instances"]))
+    right_design["subcircuits"] = list(reversed(right_subcircuits))
+    right_design["macros"] = list(reversed(right_design["macros"]))
+    left_path.write_text(json.dumps(baseline, indent=2), encoding="utf-8")
+    right_path.write_text(json.dumps(reordered, indent=2), encoding="utf-8")
+
+    left_bundle = cli_main._load_design_bundle(left_path.as_posix())
+    right_bundle = cli_main._load_design_bundle(right_path.as_posix())
+    left_manifest = build_manifest(
+        input_payload=left_bundle.manifest_input_payload,
+        resolved_params_payload=left_bundle.manifest_resolved_params_payload,
+        solver_config_snapshot={},
+        frequency_grid_metadata={"n_points": len(left_bundle.frequencies_hz)},
+        timestamp="2026-03-07T00:00:00+00:00",
+        timezone="UTC",
+    )
+    right_manifest = build_manifest(
+        input_payload=right_bundle.manifest_input_payload,
+        resolved_params_payload=right_bundle.manifest_resolved_params_payload,
+        solver_config_snapshot={},
+        frequency_grid_metadata={"n_points": len(right_bundle.frequencies_hz)},
+        timestamp="2026-03-07T00:00:00+00:00",
+        timezone="UTC",
+    )
+
+    assert left_manifest.input_hash != right_manifest.input_hash
+    assert left_manifest.resolved_params_hash == right_manifest.resolved_params_hash
+
+
+def test_loader_backed_manifest_hashes_preserve_flat_input_order_semantics(
+    tmp_path: Path,
+) -> None:
+    left_path = tmp_path / "flat_left.json"
+    right_path = tmp_path / "flat_right.json"
+    baseline = _supported_bundle()
+    left_design = baseline["design"]
+    assert isinstance(left_design, dict)
+    left_design["elements"] = [
+        {
+            "id": "R1",
+            "kind": "R",
+            "nodes": ["n1", "0"],
+            "params": {"resistance_ohm": 50.0},
+        },
+        {
+            "id": "R2",
+            "kind": "R",
+            "nodes": ["n2", "0"],
+            "params": {"resistance_ohm": 75.0},
+        },
+    ]
+    left_design["ports"] = [
+        {"id": "P1", "p_plus": "n1", "p_minus": "0"},
+        {"id": "P2", "p_plus": "n2", "p_minus": "0"},
+    ]
+    reordered = json.loads(json.dumps(baseline))
+    right_design = reordered["design"]
+    assert isinstance(right_design, dict)
+    right_design["elements"] = list(reversed(right_design["elements"]))
+    right_design["ports"] = list(reversed(right_design["ports"]))
+    left_path.write_text(json.dumps(baseline, indent=2), encoding="utf-8")
+    right_path.write_text(json.dumps(reordered, indent=2), encoding="utf-8")
+
+    left_bundle = cli_main._load_design_bundle(left_path.as_posix())
+    right_bundle = cli_main._load_design_bundle(right_path.as_posix())
+    left_manifest = build_manifest(
+        input_payload=left_bundle.manifest_input_payload,
+        resolved_params_payload=left_bundle.manifest_resolved_params_payload,
+        solver_config_snapshot={},
+        frequency_grid_metadata={"n_points": len(left_bundle.frequencies_hz)},
+        timestamp="2026-03-07T00:00:00+00:00",
+        timezone="UTC",
+    )
+    right_manifest = build_manifest(
+        input_payload=right_bundle.manifest_input_payload,
+        resolved_params_payload=right_bundle.manifest_resolved_params_payload,
+        solver_config_snapshot={},
+        frequency_grid_metadata={"n_points": len(right_bundle.frequencies_hz)},
+        timestamp="2026-03-07T00:00:00+00:00",
+        timezone="UTC",
+    )
+
+    assert left_manifest.input_hash != right_manifest.input_hash

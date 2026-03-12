@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+import unicodedata
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field
 from functools import lru_cache
+from heapq import heappop, heappush
+from importlib.resources import as_file, files
 from math import isfinite
 from pathlib import Path
+from types import MappingProxyType
 from typing import Final, Literal, Never, cast
 
 import numpy as np
@@ -20,6 +25,10 @@ from rfmna.diagnostics import (
     sort_diagnostics,
 )
 from rfmna.diagnostics.catalog import CANONICAL_DIAGNOSTIC_CATALOG
+from rfmna.elements.validation import (
+    ResolvedElementValidationError,
+    validate_resolved_supported_element_model,
+)
 from rfmna.ir import CanonicalIR, IRAuxUnknown, IRElement, IRNode, IRPort
 from rfmna.ir.models import canonicalize_element_kind
 from rfmna.parser._loader_exclusions_runtime import (
@@ -51,6 +60,7 @@ _DESIGN_BUNDLE_SCHEMA_RESOURCE_PATH: Final[str] = "rfmna/parser/resources/design
 
 BundleSweepMode = Literal["linear", "log"]
 LoaderDiagnosticCommand = Literal["check", "run"]
+BundleHierarchyInstanceType = Literal["macro", "subcircuit"]
 _AUX_REQUIRED_KINDS: Final[frozenset[str]] = frozenset(("L", "V", "VCVS"))
 _Y_BLOCK_NORMALIZED_KINDS: Final[frozenset[str]] = frozenset(
     (
@@ -135,6 +145,32 @@ class BundleParameterSweep:
 
 
 @dataclass(frozen=True, slots=True)
+class BundleHierarchyInstanceDecl:
+    instance_id: str
+    instance_type: BundleHierarchyInstanceType
+    target_id: str
+    nodes: tuple[str, ...]
+    params: Mapping[str, float | str]
+
+
+@dataclass(frozen=True, slots=True)
+class BundleMacroDecl:
+    macro_id: str
+    kind: str
+    node_formals: tuple[str, ...]
+    params: Mapping[str, float | str]
+
+
+@dataclass(frozen=True, slots=True)
+class BundleSubcircuitDecl:
+    subcircuit_id: str
+    ports: tuple[str, ...]
+    parameters: Mapping[str, float | str]
+    elements: tuple[BundleElementDecl, ...]
+    instances: tuple[BundleHierarchyInstanceDecl, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class BundleDocument:
     source_path: Path
     reference_node: str
@@ -142,6 +178,9 @@ class BundleDocument:
     parameters: Mapping[str, float | str]
     elements: tuple[BundleElementDecl, ...]
     ports: tuple[BundlePortDecl, ...]
+    macros: tuple[BundleMacroDecl, ...]
+    subcircuits: tuple[BundleSubcircuitDecl, ...]
+    instances: tuple[BundleHierarchyInstanceDecl, ...]
     frequency_sweep: BundleFrequencySweep
     parameter_sweeps: tuple[BundleParameterSweep, ...]
 
@@ -160,6 +199,7 @@ class DesignBundleSchemaContract:
     supported_kind_required_params: Mapping[str, tuple[str, ...]]
     frequency_sweep_modes: tuple[str, ...]
     frequency_units: tuple[str, ...]
+    hierarchy_instance_types: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +231,93 @@ class GovernedLoaderExclusion:
     witness_capability_id: str
 
 
+@dataclass(frozen=True, slots=True)
+class _HierarchyDefinitionRecord:
+    definition_type: BundleHierarchyInstanceType
+    raw_id: str
+    normalized_id: str
+    expected_node_count: int
+    subcircuit_targets: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _HierarchyScopedInstance:
+    scope_type: str
+    scope_id: str
+    instance: BundleHierarchyInstanceDecl
+
+
+@dataclass(frozen=True, slots=True)
+class _HierarchyValidationPaths:
+    body_path_prefix: str
+    declared_parameters_path: str
+    override_path: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _HierarchyValidationTargets:
+    macro_targets: Mapping[str, BundleMacroDecl]
+    subcircuit_targets: Mapping[str, BundleSubcircuitDecl]
+    memo: _HierarchyValidationMemo
+
+
+@dataclass(slots=True)
+class _HierarchyValidationMemo:
+    validated_subcircuit_scopes: set[tuple[str, tuple[tuple[str, float], ...]]] = field(
+        default_factory=set
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _DeclaredElementValidationInput:
+    element_id: str
+    kind: str
+    nodes: Sequence[str]
+    declared_params: Mapping[str, float | str]
+    resolved_scope: Mapping[str, float]
+    path: str
+    context: LoaderDiagContext | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ResolvedParameterScopeInput:
+    resolved_parameters: Mapping[str, float]
+    declared_parameters: Mapping[str, float | str]
+    declared_path: str
+    override_parameters: Mapping[str, float | str] | None = None
+    override_path: str | None = None
+    context: LoaderDiagContext | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _IllegalHierarchyInterfaceDeclarationInput:
+    values: Sequence[str]
+    declaration_kind: str
+    field_name: str
+    scope_id: str
+    scope_type: str
+    context_element_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingSubcircuitValidation:
+    subcircuit: BundleSubcircuitDecl
+    resolved_parameters: Mapping[str, float]
+    parameter_overrides: Mapping[str, float | str]
+    paths: _HierarchyValidationPaths
+    context_element_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class _EvaluatedElementValidationInput:
+    element_id: str
+    kind: str
+    nodes: Sequence[str]
+    params: Mapping[str, float]
+    path: str
+    context: LoaderDiagContext | None = None
+
+
 class DesignBundleLoadError(ValueError):
     def __init__(self, diagnostics: Sequence[DiagnosticEvent]) -> None:
         ordered = tuple(sort_diagnostics(diagnostics))
@@ -210,11 +337,48 @@ class _DuplicateMappingKeyError(ValueError):
 def load_design_bundle_document(design: str | Path) -> ParsedDesignBundle:
     source_path = Path(design)
     payload = _read_payload(source_path)
-    document = _parse_bundle_document(payload=payload, source_path=source_path)
-    exclusion_diagnostics = _exclusion_diagnostics(document)
-    if exclusion_diagnostics:
-        raise DesignBundleLoadError(exclusion_diagnostics)
-    return _build_parsed_bundle(document, source_payload=payload)
+    document = _parse_validated_bundle_document(
+        payload=payload,
+        source_path=source_path,
+        include_loader_exclusions=True,
+    )
+    return _build_parsed_bundle(
+        document,
+        source_payload=payload,
+        include_top_level_hierarchy_runnable_checks=True,
+    )
+
+
+def parse_design_bundle_document(design: str | Path) -> BundleDocument:
+    source_path = Path(design)
+    payload = _read_payload(source_path)
+    document = _parse_validated_bundle_document(
+        payload=payload,
+        source_path=source_path,
+        include_loader_exclusions=False,
+    )
+    # Preserve the established flat validation contract for the parse surface while
+    # relaxing only loader exclusions and runnable top-level hierarchy admission.
+    _ = _build_parsed_bundle(
+        document,
+        source_payload=payload,
+        include_top_level_hierarchy_runnable_checks=False,
+    )
+    return document
+
+
+def canonical_bundle_parse_product_json(document: BundleDocument) -> str:
+    return json.dumps(
+        _canonical_bundle_parse_product_payload(document),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    )
+
+
+def hash_bundle_parse_product(document: BundleDocument) -> str:
+    return hashlib.sha256(canonical_bundle_parse_product_json(document).encode("utf-8")).hexdigest()
 
 
 def adapt_loader_diagnostics_for_command(
@@ -333,16 +497,29 @@ def _source_tree_design_bundle_schema_resource_path() -> Path:
     return Path(__file__).with_name("resources") / "design_bundle_v1.json"
 
 
+def _load_packaged_design_bundle_schema_payload_text() -> str:
+    source_tree_resource_path = _source_tree_design_bundle_schema_resource_path()
+    if source_tree_resource_path.is_file():
+        return source_tree_resource_path.read_text(encoding="utf-8")
+
+    packaged_resource = files("rfmna.parser").joinpath("resources/design_bundle_v1.json")
+    try:
+        with as_file(packaged_resource) as packaged_path:
+            if packaged_path.is_file():
+                return packaged_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        pass
+    raise FileNotFoundError(_DESIGN_BUNDLE_SCHEMA_RESOURCE_PATH)
+
+
 def _load_design_bundle_schema_payload_text() -> str:
     repo_artifact_path = _repo_design_bundle_schema_artifact_path()
     if repo_artifact_path.exists():
         return repo_artifact_path.read_text(encoding="utf-8")
-
-    resource_path = _source_tree_design_bundle_schema_resource_path()
-    if resource_path.exists():
-        return resource_path.read_text(encoding="utf-8")
-
-    raise FileNotFoundError(_DESIGN_BUNDLE_SCHEMA_RESOURCE_PATH)
+    try:
+        return _load_packaged_design_bundle_schema_payload_text()
+    except FileNotFoundError:
+        raise FileNotFoundError(_DESIGN_BUNDLE_SCHEMA_RESOURCE_PATH) from None
 
 
 @lru_cache(maxsize=1)
@@ -404,8 +581,14 @@ def _load_design_bundle_schema_contract() -> DesignBundleSchemaContract:
                 ),
                 path="$.$defs.frequency_value.properties.unit",
             ),
+            hierarchy_instance_types=_schema_enum_strings(
+                _schema_mapping(defs.get("hierarchy_instance_type"), path="$.$defs.hierarchy_instance_type"),
+                path="$.$defs.hierarchy_instance_type",
+            ),
         )
-    except (FileNotFoundError, json.JSONDecodeError, TypeError, ValueError) as exc:
+    except DesignBundleLoadError:
+        raise
+    except (FileNotFoundError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise DesignBundleLoadError(
             (
                 _loader_diag(
@@ -610,6 +793,13 @@ def _parse_bundle_document(*, payload: dict[str, object], source_path: Path) -> 
         ),
         elements=_parse_elements(design_raw.get("elements"), path="$.design.elements"),
         ports=_parse_ports(design_raw.get("ports", []), path="$.design.ports"),
+        macros=_parse_macros(design_raw.get("macros", []), path="$.design.macros"),
+        subcircuits=_parse_subcircuits(
+            design_raw.get("subcircuits", []), path="$.design.subcircuits"
+        ),
+        instances=_parse_hierarchy_instances(
+            design_raw.get("instances", []), path="$.design.instances"
+        ),
         frequency_sweep=_parse_frequency_sweep(
             analysis_raw.get("frequency_sweep"), path="$.analysis.frequency_sweep"
         ),
@@ -619,11 +809,38 @@ def _parse_bundle_document(*, payload: dict[str, object], source_path: Path) -> 
     )
 
 
+def _parse_validated_bundle_document(
+    *,
+    payload: dict[str, object],
+    source_path: Path,
+    include_loader_exclusions: bool,
+) -> BundleDocument:
+    document = _parse_bundle_document(payload=payload, source_path=source_path)
+    diagnostics = list(_hierarchy_diagnostics(document))
+    if diagnostics:
+        raise DesignBundleLoadError(tuple(sort_diagnostics(diagnostics)))
+    if include_loader_exclusions:
+        exclusion_diagnostics = _exclusion_diagnostics(document)
+        if exclusion_diagnostics:
+            raise DesignBundleLoadError(exclusion_diagnostics)
+    resolved_parameter_map = _resolve_parameters(document.parameters).as_dict()
+    _validate_hierarchy_declaration_values(
+        document=document,
+        resolved_parameters=resolved_parameter_map,
+    )
+    return document
+
+
 def _build_parsed_bundle(
     document: BundleDocument,
     *,
     source_payload: Mapping[str, object],
+    include_top_level_hierarchy_runnable_checks: bool = False,
 ) -> ParsedDesignBundle:
+    if include_top_level_hierarchy_runnable_checks and document.instances:
+        raise DesignBundleLoadError(
+            (_hierarchy_top_level_instances_unsupported_diagnostic(document),)
+        )
     resolved_parameters = _resolve_parameters(document.parameters)
     resolved_parameter_map = resolved_parameters.as_dict()
     frequency_values = _build_frequency_values(
@@ -721,6 +938,633 @@ def _resolve_parameters(parameters: Mapping[str, float | str]) -> ResolvedParame
         ) from exc
 
 
+def _resolve_scoped_parameters(
+    *,
+    parameters: Mapping[str, float | str],
+    resolved_parameters: Mapping[str, float],
+    path: str,
+) -> dict[str, float]:
+    try:
+        return resolve_parameters(resolved_parameters, parameters).as_dict()
+    except ParseError as exc:
+        raise DesignBundleLoadError(
+            (
+                _loader_diag(
+                    code="E_CLI_DESIGN_VALUE_INVALID",
+                    message=f"design parameter resolution failed: {exc.detail.message}",
+                    suggested_action="fix parameter expressions and retry",
+                    witness={
+                        "input_text": exc.detail.input_text,
+                        "path": path,
+                        "source_code": exc.detail.code,
+                        "witness": list(exc.detail.witness or ()),
+                    },
+                ),
+            )
+        ) from exc
+
+
+def _hierarchy_sort_key(identifier: str) -> tuple[str, str]:
+    return (_normalize_hierarchy_identifier(identifier), identifier)
+
+
+def _hierarchy_macro_sort_key(macro: BundleMacroDecl) -> tuple[str, str]:
+    return _hierarchy_sort_key(macro.macro_id)
+
+
+def _hierarchy_subcircuit_sort_key(subcircuit: BundleSubcircuitDecl) -> tuple[str, str]:
+    return _hierarchy_sort_key(subcircuit.subcircuit_id)
+
+
+def _hierarchy_element_sort_key(element: BundleElementDecl) -> tuple[str, str]:
+    return _hierarchy_sort_key(element.element_id)
+
+
+def _hierarchy_instance_sort_key(
+    instance: BundleHierarchyInstanceDecl,
+) -> tuple[str, str, str, str, str]:
+    return (
+        _normalize_hierarchy_identifier(instance.instance_id),
+        instance.instance_id,
+        instance.instance_type,
+        _normalize_hierarchy_identifier(instance.target_id),
+        instance.target_id,
+    )
+
+
+def _pending_subcircuit_validation_sort_key(
+    pending: _PendingSubcircuitValidation,
+) -> tuple[str, str, str]:
+    return (
+        pending.paths.body_path_prefix,
+        _normalize_hierarchy_identifier(pending.subcircuit.subcircuit_id),
+        pending.subcircuit.subcircuit_id,
+    )
+
+
+def _resolved_parameter_cache_key(
+    values: Mapping[str, float],
+) -> tuple[tuple[str, float], ...]:
+    return tuple((key, values[key]) for key in sorted(values))
+
+
+def _validated_subcircuit_scope_key(
+    *,
+    subcircuit: BundleSubcircuitDecl,
+    resolved_scope: Mapping[str, float],
+) -> tuple[str, tuple[tuple[str, float], ...]]:
+    return (
+        _normalize_hierarchy_identifier(subcircuit.subcircuit_id),
+        _resolved_parameter_cache_key(resolved_scope),
+    )
+
+
+def _validate_hierarchy_declaration_values(
+    *,
+    document: BundleDocument,
+    resolved_parameters: Mapping[str, float],
+) -> None:
+    macro_targets = {
+        _normalize_hierarchy_identifier(macro.macro_id): macro
+        for macro in document.macros
+    }
+    subcircuit_targets = {
+        _normalize_hierarchy_identifier(subcircuit.subcircuit_id): subcircuit
+        for subcircuit in document.subcircuits
+    }
+    targets = _HierarchyValidationTargets(
+        macro_targets=macro_targets,
+        subcircuit_targets=subcircuit_targets,
+        memo=_HierarchyValidationMemo(),
+    )
+    diagnostics: list[DiagnosticEvent] = []
+    for macro in sorted(document.macros, key=_hierarchy_macro_sort_key):
+        try:
+            _validate_hierarchy_macro_values(
+                macro=macro,
+                resolved_parameters=resolved_parameters,
+            )
+        except DesignBundleLoadError as exc:
+            diagnostics.extend(exc.diagnostics)
+    for subcircuit in sorted(document.subcircuits, key=_hierarchy_subcircuit_sort_key):
+        try:
+            _validate_subcircuit_declaration_values(
+                subcircuit=subcircuit,
+                resolved_parameters=resolved_parameters,
+                targets=targets,
+            )
+        except DesignBundleLoadError as exc:
+            diagnostics.extend(exc.diagnostics)
+    for instance in sorted(document.instances, key=_hierarchy_instance_sort_key):
+        try:
+            _validate_hierarchy_instance_values(
+                instance=instance,
+                resolved_parameters=resolved_parameters,
+                path_prefix="design.instances",
+                targets=targets,
+                context_element_id=instance.instance_id,
+            )
+        except DesignBundleLoadError as exc:
+            diagnostics.extend(exc.diagnostics)
+    if diagnostics:
+        raise DesignBundleLoadError(tuple(sort_diagnostics(diagnostics)))
+
+
+def _validate_hierarchy_macro_values(
+    *,
+    macro: BundleMacroDecl,
+    resolved_parameters: Mapping[str, float],
+) -> None:
+    _validate_supported_param_keys(
+        kind=macro.kind,
+        params=macro.params,
+        path=f"design.macros[{macro.macro_id}].params",
+        subject_label=f"macro '{macro.macro_id}'",
+        context=LoaderDiagContext(element_id=macro.macro_id),
+    )
+    resolved_scope = _resolve_parameter_scope_with_overrides(
+        _ResolvedParameterScopeInput(
+            resolved_parameters=resolved_parameters,
+            declared_parameters=macro.params,
+            declared_path=f"design.macros[{macro.macro_id}].params",
+            context=LoaderDiagContext(element_id=macro.macro_id),
+        )
+    )
+    _validate_complete_supported_element_model_if_declared(
+        _DeclaredElementValidationInput(
+            element_id=macro.macro_id,
+            kind=macro.kind,
+            nodes=macro.node_formals,
+            declared_params=macro.params,
+            resolved_scope=resolved_scope,
+            path=f"design.macros[{macro.macro_id}]",
+            context=LoaderDiagContext(element_id=macro.macro_id),
+        )
+    )
+
+
+def _validate_subcircuit_declaration_values(
+    *,
+    subcircuit: BundleSubcircuitDecl,
+    resolved_parameters: Mapping[str, float],
+    targets: _HierarchyValidationTargets,
+    parameter_overrides: Mapping[str, float | str] | None = None,
+    paths: _HierarchyValidationPaths | None = None,
+) -> None:
+    resolved_paths = paths or _HierarchyValidationPaths(
+        body_path_prefix=f"design.subcircuits[{subcircuit.subcircuit_id}]",
+        declared_parameters_path=f"design.subcircuits[{subcircuit.subcircuit_id}].parameters",
+        override_path=(
+            None
+            if not parameter_overrides
+            else f"design.subcircuits[{subcircuit.subcircuit_id}].parameters"
+        ),
+    )
+    subcircuit_scope = _resolve_parameter_scope_with_overrides(
+        _ResolvedParameterScopeInput(
+            resolved_parameters=resolved_parameters,
+            declared_parameters=subcircuit.parameters,
+            declared_path=resolved_paths.declared_parameters_path,
+            override_parameters=parameter_overrides,
+            override_path=resolved_paths.override_path,
+            context=LoaderDiagContext(element_id=subcircuit.subcircuit_id),
+        )
+    )
+    diagnostics: list[DiagnosticEvent] = []
+    for element in sorted(subcircuit.elements, key=_hierarchy_element_sort_key):
+        try:
+            _validate_hierarchy_element_values(
+                element=element,
+                resolved_parameters=subcircuit_scope,
+                path_prefix=f"{resolved_paths.body_path_prefix}.elements",
+                context_element_id=f"{subcircuit.subcircuit_id}:{element.element_id}",
+            )
+        except DesignBundleLoadError as exc:
+            diagnostics.extend(exc.diagnostics)
+    for instance in sorted(subcircuit.instances, key=_hierarchy_instance_sort_key):
+        try:
+            _validate_hierarchy_instance_values(
+                instance=instance,
+                resolved_parameters=subcircuit_scope,
+                path_prefix=f"{resolved_paths.body_path_prefix}.instances",
+                targets=targets,
+                context_element_id=f"{subcircuit.subcircuit_id}:{instance.instance_id}",
+            )
+        except DesignBundleLoadError as exc:
+            diagnostics.extend(exc.diagnostics)
+    if diagnostics:
+        raise DesignBundleLoadError(tuple(sort_diagnostics(diagnostics)))
+
+
+def _validate_hierarchy_element_values(
+    *,
+    element: BundleElementDecl,
+    resolved_parameters: Mapping[str, float],
+    path_prefix: str,
+    context_element_id: str,
+) -> None:
+    evaluated_params = {
+        param_name: _evaluate_scalar_token(
+            element.params[param_name],
+            resolved_parameters=resolved_parameters,
+            path=f"{path_prefix}[{element.element_id}].params.{param_name}",
+            context=LoaderDiagContext(element_id=context_element_id),
+        )
+        for param_name in sorted(element.params)
+    }
+    _validate_evaluated_element_model(
+        _EvaluatedElementValidationInput(
+            element_id=element.element_id,
+            kind=element.kind,
+            nodes=element.nodes,
+            params=evaluated_params,
+            path=f"{path_prefix}[{element.element_id}]",
+            context=LoaderDiagContext(element_id=context_element_id),
+        )
+    )
+
+
+def _validate_hierarchy_instance_values(
+    *,
+    instance: BundleHierarchyInstanceDecl,
+    resolved_parameters: Mapping[str, float],
+    path_prefix: str,
+    targets: _HierarchyValidationTargets,
+    context_element_id: str,
+) -> None:
+    normalized_target_id = _normalize_hierarchy_identifier(instance.target_id)
+    if instance.instance_type == "macro":
+        target_macro = targets.macro_targets[normalized_target_id]
+        _validate_hierarchy_macro_instance_values(
+            instance=instance,
+            target_macro=target_macro,
+            resolved_parameters=resolved_parameters,
+            path_prefix=path_prefix,
+            context_element_id=context_element_id,
+        )
+        return
+    target_subcircuit = targets.subcircuit_targets[normalized_target_id]
+    _validate_declared_override_keys(
+        params=instance.params,
+        allowed_keys=target_subcircuit.parameters,
+        path=f"{path_prefix}[{instance.instance_id}].params",
+        subject_label=(
+            "subcircuit instance "
+            f"'{instance.instance_id}' targeting subcircuit '{target_subcircuit.subcircuit_id}'"
+        ),
+        context=LoaderDiagContext(element_id=context_element_id),
+    )
+    _validate_hierarchy_subcircuit_instance_values(
+        initial=_PendingSubcircuitValidation(
+            subcircuit=target_subcircuit,
+            resolved_parameters=resolved_parameters,
+            parameter_overrides=instance.params,
+            paths=_HierarchyValidationPaths(
+                body_path_prefix=f"{path_prefix}[{instance.instance_id}].target[{target_subcircuit.subcircuit_id}]",
+                declared_parameters_path=f"design.subcircuits[{target_subcircuit.subcircuit_id}].parameters",
+                override_path=f"{path_prefix}[{instance.instance_id}].params",
+            ),
+            context_element_id=context_element_id,
+        ),
+        targets=targets,
+    )
+
+
+def _validate_hierarchy_macro_instance_values(
+    *,
+    instance: BundleHierarchyInstanceDecl,
+    target_macro: BundleMacroDecl,
+    resolved_parameters: Mapping[str, float],
+    path_prefix: str,
+    context_element_id: str,
+) -> None:
+    _validate_supported_param_keys(
+        kind=target_macro.kind,
+        params=instance.params,
+        path=f"{path_prefix}[{instance.instance_id}].params",
+        subject_label=(
+            f"macro instance '{instance.instance_id}' targeting macro '{target_macro.macro_id}'"
+        ),
+        context=LoaderDiagContext(element_id=context_element_id),
+    )
+    composed_params = _merged_scalar_mapping(target_macro.params, instance.params)
+    resolved_scope = _resolve_parameter_scope_with_overrides(
+        _ResolvedParameterScopeInput(
+            resolved_parameters=resolved_parameters,
+            declared_parameters=target_macro.params,
+            declared_path=f"design.macros[{target_macro.macro_id}].params",
+            override_parameters=instance.params,
+            override_path=f"{path_prefix}[{instance.instance_id}].params",
+            context=LoaderDiagContext(element_id=context_element_id),
+        )
+    )
+    resolved_model_params = {
+        param_name: resolved_scope[param_name]
+        for param_name in sorted(composed_params)
+    }
+    _validate_evaluated_element_model(
+        _EvaluatedElementValidationInput(
+            element_id=instance.instance_id,
+            kind=target_macro.kind,
+            nodes=instance.nodes,
+            params=resolved_model_params,
+            path=f"{path_prefix}[{instance.instance_id}]",
+            context=LoaderDiagContext(element_id=context_element_id),
+        )
+    )
+
+
+def _validate_complete_supported_element_model_if_declared(
+    validation_input: _DeclaredElementValidationInput,
+) -> None:
+    canonical_kind = canonicalize_element_kind(validation_input.kind)
+    schema_contract = _load_design_bundle_schema_contract()
+    if canonical_kind is None or canonical_kind not in schema_contract.supported_kind_required_params:
+        return
+    required_params = schema_contract.supported_kind_required_params[canonical_kind]
+    if any(param_name not in validation_input.declared_params for param_name in required_params):
+        return
+    resolved_model_params = {
+        param_name: validation_input.resolved_scope[param_name]
+        for param_name in sorted(validation_input.declared_params)
+    }
+    _validate_evaluated_element_model(
+        _EvaluatedElementValidationInput(
+            element_id=validation_input.element_id,
+            kind=validation_input.kind,
+            nodes=validation_input.nodes,
+            params=resolved_model_params,
+            path=validation_input.path,
+            context=validation_input.context,
+        )
+    )
+
+
+def _validate_hierarchy_subcircuit_instance_values(
+    *,
+    initial: _PendingSubcircuitValidation,
+    targets: _HierarchyValidationTargets,
+) -> None:
+    pending: list[tuple[tuple[str, str, str], _PendingSubcircuitValidation]] = []
+    diagnostics: list[DiagnosticEvent] = []
+    heappush(pending, (_pending_subcircuit_validation_sort_key(initial), initial))
+    while pending:
+        _, current = heappop(pending)
+        try:
+            current_scope = _resolve_parameter_scope_with_overrides(
+                _ResolvedParameterScopeInput(
+                    resolved_parameters=current.resolved_parameters,
+                    declared_parameters=current.subcircuit.parameters,
+                    declared_path=current.paths.declared_parameters_path,
+                    override_parameters=current.parameter_overrides,
+                    override_path=current.paths.override_path,
+                    context=LoaderDiagContext(element_id=current.context_element_id),
+                )
+            )
+        except DesignBundleLoadError as exc:
+            diagnostics.extend(exc.diagnostics)
+            continue
+        current_scope_key = _validated_subcircuit_scope_key(
+            subcircuit=current.subcircuit,
+            resolved_scope=current_scope,
+        )
+        if current_scope_key in targets.memo.validated_subcircuit_scopes:
+            continue
+        current_scope_valid = True
+        for element in sorted(current.subcircuit.elements, key=_hierarchy_element_sort_key):
+            try:
+                _validate_hierarchy_element_values(
+                    element=element,
+                    resolved_parameters=current_scope,
+                    path_prefix=f"{current.paths.body_path_prefix}.elements",
+                    context_element_id=f"{current.subcircuit.subcircuit_id}:{element.element_id}",
+                )
+            except DesignBundleLoadError as exc:
+                diagnostics.extend(exc.diagnostics)
+                current_scope_valid = False
+        instance_path_prefix = f"{current.paths.body_path_prefix}.instances"
+        for nested_instance in sorted(
+            current.subcircuit.instances,
+            key=_hierarchy_instance_sort_key,
+        ):
+            if nested_instance.instance_type == "macro":
+                try:
+                    _validate_hierarchy_macro_instance_values(
+                        instance=nested_instance,
+                        target_macro=targets.macro_targets[
+                            _normalize_hierarchy_identifier(nested_instance.target_id)
+                        ],
+                        resolved_parameters=current_scope,
+                        path_prefix=instance_path_prefix,
+                        context_element_id=(
+                            f"{current.subcircuit.subcircuit_id}:{nested_instance.instance_id}"
+                        ),
+                    )
+                except DesignBundleLoadError as exc:
+                    diagnostics.extend(exc.diagnostics)
+                    current_scope_valid = False
+                continue
+            nested_target = targets.subcircuit_targets[
+                _normalize_hierarchy_identifier(nested_instance.target_id)
+            ]
+            try:
+                _validate_declared_override_keys(
+                    params=nested_instance.params,
+                    allowed_keys=nested_target.parameters,
+                    path=f"{instance_path_prefix}[{nested_instance.instance_id}].params",
+                    subject_label=(
+                        "subcircuit instance "
+                        f"'{nested_instance.instance_id}' targeting subcircuit '{nested_target.subcircuit_id}'"
+                    ),
+                    context=LoaderDiagContext(
+                        element_id=f"{current.subcircuit.subcircuit_id}:{nested_instance.instance_id}"
+                    ),
+                )
+            except DesignBundleLoadError as exc:
+                diagnostics.extend(exc.diagnostics)
+                current_scope_valid = False
+                continue
+            next_validation = _PendingSubcircuitValidation(
+                subcircuit=nested_target,
+                resolved_parameters=current_scope,
+                parameter_overrides=nested_instance.params,
+                paths=_HierarchyValidationPaths(
+                    body_path_prefix=(
+                        f"{instance_path_prefix}[{nested_instance.instance_id}].target[{nested_target.subcircuit_id}]"
+                    ),
+                    declared_parameters_path=(
+                        f"design.subcircuits[{nested_target.subcircuit_id}].parameters"
+                    ),
+                    override_path=f"{instance_path_prefix}[{nested_instance.instance_id}].params",
+                ),
+                context_element_id=(
+                    f"{current.subcircuit.subcircuit_id}:{nested_instance.instance_id}"
+                ),
+            )
+            heappush(
+                pending,
+                (_pending_subcircuit_validation_sort_key(next_validation), next_validation),
+            )
+        if current_scope_valid:
+            targets.memo.validated_subcircuit_scopes.add(current_scope_key)
+    if diagnostics:
+        raise DesignBundleLoadError(tuple(sort_diagnostics(diagnostics)))
+
+
+def _validate_supported_param_keys(
+    *,
+    kind: str,
+    params: Mapping[str, float | str],
+    path: str,
+    subject_label: str,
+    context: LoaderDiagContext | None = None,
+) -> None:
+    canonical_kind = canonicalize_element_kind(kind)
+    schema_contract = _load_design_bundle_schema_contract()
+    if canonical_kind is None or canonical_kind not in schema_contract.supported_kind_required_params:
+        return
+    _validate_declared_override_keys(
+        params=params,
+        allowed_keys=schema_contract.supported_kind_required_params[canonical_kind],
+        path=path,
+        subject_label=subject_label,
+        context=context,
+    )
+
+
+def _validate_declared_override_keys(
+    *,
+    params: Mapping[str, float | str],
+    allowed_keys: Iterable[str],
+    path: str,
+    subject_label: str,
+    context: LoaderDiagContext | None = None,
+) -> None:
+    allowed = tuple(sorted(set(allowed_keys)))
+    unexpected = tuple(sorted(key for key in params if key not in allowed))
+    if not unexpected:
+        return
+    raise DesignBundleLoadError(
+        (
+            _loader_diag(
+                code="E_CLI_DESIGN_VALUE_INVALID",
+                message=(
+                    f"{subject_label} declares unsupported parameter key(s): "
+                    f"{', '.join(unexpected)}"
+                ),
+                suggested_action="fix the design bundle model fields and retry",
+                witness={
+                    "allowed_keys": list(allowed),
+                    "path": path,
+                    "unexpected_keys": list(unexpected),
+                },
+                context=context,
+            ),
+        )
+    )
+
+
+def _merged_scalar_mapping(
+    base: Mapping[str, float | str],
+    overrides: Mapping[str, float | str],
+) -> dict[str, float | str]:
+    merged = {key: base[key] for key in sorted(base)}
+    for key in sorted(overrides):
+        merged[key] = overrides[key]
+    return merged
+
+
+def _resolve_parameter_scope_with_overrides(
+    resolution_input: _ResolvedParameterScopeInput,
+) -> dict[str, float]:
+    merged_parameters = _merged_scalar_mapping(
+        resolution_input.declared_parameters,
+        resolution_input.override_parameters or {},
+    )
+    try:
+        return resolve_parameters(
+            resolution_input.resolved_parameters,
+            merged_parameters,
+        ).as_dict()
+    except ParseError as exc:
+        path = resolution_input.declared_path
+        input_text: object = exc.detail.input_text
+        if (
+            resolution_input.override_parameters is not None
+            and exc.detail.input_text in resolution_input.override_parameters
+        ):
+            path = (
+                f"{resolution_input.override_path}.{exc.detail.input_text}"
+                if resolution_input.override_path is not None
+                else resolution_input.declared_path
+            )
+            input_text = resolution_input.override_parameters[exc.detail.input_text]
+        elif exc.detail.input_text in resolution_input.declared_parameters:
+            path = f"{resolution_input.declared_path}.{exc.detail.input_text}"
+            input_text = resolution_input.declared_parameters[exc.detail.input_text]
+        if not isinstance(input_text, str):
+            input_text = exc.detail.input_text
+        raise DesignBundleLoadError(
+            (
+                _loader_diag(
+                    code="E_CLI_DESIGN_VALUE_INVALID",
+                    message=f"design parameter resolution failed: {exc.detail.message}",
+                    suggested_action="fix parameter expressions and retry",
+                    witness={
+                        "input_text": input_text,
+                        "path": path,
+                        "source_code": exc.detail.code,
+                        "witness": list(exc.detail.witness or ()),
+                    },
+                    context=resolution_input.context,
+                ),
+            )
+        ) from exc
+
+
+def _validate_evaluated_element_model(
+    validation_input: _EvaluatedElementValidationInput,
+) -> None:
+    try:
+        element = IRElement(
+            element_id=validation_input.element_id,
+            element_type=validation_input.kind,
+            nodes=tuple(validation_input.nodes),
+            params=tuple(
+                (param_name, validation_input.params[param_name])
+                for param_name in sorted(validation_input.params)
+            ),
+        )
+        validate_resolved_supported_element_model(element)
+    except ResolvedElementValidationError as exc:
+        witness: dict[str, object] = {"path": validation_input.path, "issue_code": exc.issue_code}
+        if exc.issue_context is not None:
+            witness["issue_context"] = dict(exc.issue_context)
+        raise DesignBundleLoadError(
+            (
+                _loader_diag(
+                    code="E_CLI_DESIGN_VALUE_INVALID",
+                    message=f"design bundle model validation failed: {exc}",
+                    suggested_action="fix design element and port values, then retry",
+                    witness=witness,
+                    context=validation_input.context,
+                ),
+            )
+        ) from exc
+    except ValueError as exc:
+        raise DesignBundleLoadError(
+            (
+                _loader_diag(
+                    code="E_CLI_DESIGN_VALUE_INVALID",
+                    message=f"design bundle model validation failed: {exc}",
+                    suggested_action="fix design element and port values, then retry",
+                    witness={"path": validation_input.path},
+                    context=validation_input.context,
+                ),
+            )
+        ) from exc
+
+
 def _build_frequency_values(
     *,
     sweep: BundleFrequencySweep,
@@ -770,12 +1614,14 @@ def _build_ir_element(
         )
         for param_name, param_value in sorted(element.params.items())
     )
-    return IRElement(
+    ir_element = IRElement(
         element_id=element.element_id,
         element_type=element.kind,
         nodes=element.nodes,
         params=evaluated_params,
     )
+    validate_resolved_supported_element_model(ir_element)
+    return ir_element
 
 
 def _build_rf_port(
@@ -989,21 +1835,21 @@ def _exclusion_diagnostics(document: BundleDocument) -> tuple[DiagnosticEvent, .
                 )
             )
 
-    for element in document.elements:
-        normalized_kind = _normalize_kind_token(element.kind)
+    for kind, context_element_id, subject_label, witness_extra in _declared_element_like_records(document):
+        normalized_kind = _normalize_kind_token(kind)
         capability_id = _excluded_capability_id(normalized_kind)
         if capability_id is None:
-            canonical_kind = canonicalize_element_kind(element.kind)
+            canonical_kind = canonicalize_element_kind(kind)
             if canonical_kind is None:
                 diagnostics.append(
                     build_diagnostic_event(
                         code="E_IR_KIND_UNKNOWN",
-                        message=f"unsupported element kind '{element.kind}' for element '{element.element_id}'",
-                        element_id=element.element_id,
+                        message=f"unsupported element kind '{kind}' for {subject_label}",
+                        element_id=context_element_id,
                         witness={
-                            "element_id": element.element_id,
+                            **witness_extra,
                             "normalized_candidate": normalized_kind,
-                            "raw_kind": element.kind,
+                            "raw_kind": kind,
                             "supported_kinds": supported_kinds,
                         },
                     )
@@ -1014,14 +1860,14 @@ def _exclusion_diagnostics(document: BundleDocument) -> tuple[DiagnosticEvent, .
             diagnostics.append(
                 build_diagnostic_event(
                     code="E_IR_KIND_UNKNOWN",
-                    message=f"unsupported element kind '{element.kind}' for element '{element.element_id}'",
-                    element_id=element.element_id,
+                    message=f"unsupported element kind '{kind}' for {subject_label}",
+                    element_id=context_element_id,
                     witness={
                         "deferred_capability_id": capability_id,
-                        "element_id": element.element_id,
+                        **witness_extra,
                         "normalized_candidate": normalized_kind,
                         "policy_state": "not_deferred",
-                        "raw_kind": element.kind,
+                        "raw_kind": kind,
                         "supported_kinds": supported_kinds,
                     },
                 )
@@ -1030,17 +1876,897 @@ def _exclusion_diagnostics(document: BundleDocument) -> tuple[DiagnosticEvent, .
         diagnostics.append(
             _governed_exclusion_diagnostic(
                 exclusion=exclusion,
-                message=f"design element '{element.element_id}' uses temporarily excluded capability '{capability_id}'",
+                message=f"{subject_label} uses temporarily excluded capability '{capability_id}'",
                 suggested_action="remove the excluded element kind or wait for Phase 3 closure support",
                 witness_extra={
-                    "element_id": element.element_id,
-                    "kind": element.kind,
+                    **witness_extra,
+                    "kind": kind,
                     "normalized_kind": normalized_kind,
                 },
-                context=LoaderDiagContext(element_id=element.element_id),
+                context=LoaderDiagContext(element_id=context_element_id),
             )
         )
     return tuple(sort_diagnostics(diagnostics))
+
+
+def _declared_element_like_records(
+    document: BundleDocument,
+) -> tuple[tuple[str, str, str, dict[str, object]], ...]:
+    records: list[tuple[str, str, str, dict[str, object]]] = []
+    for element in document.elements:
+        records.append(
+            (
+                element.kind,
+                element.element_id,
+                f"design element '{element.element_id}'",
+                {"element_id": element.element_id},
+            )
+        )
+    for macro in document.macros:
+        records.append(
+            (
+                macro.kind,
+                macro.macro_id,
+                f"design macro '{macro.macro_id}'",
+                {"macro_id": macro.macro_id, "scope_type": "macro"},
+            )
+        )
+    for subcircuit in document.subcircuits:
+        for element in subcircuit.elements:
+            records.append(
+                (
+                    element.kind,
+                    f"{subcircuit.subcircuit_id}:{element.element_id}",
+                    f"subcircuit '{subcircuit.subcircuit_id}' element '{element.element_id}'",
+                    {
+                        "element_id": element.element_id,
+                        "scope_id": subcircuit.subcircuit_id,
+                        "scope_type": "subcircuit",
+                    },
+                )
+            )
+    return tuple(records)
+
+
+def _hierarchy_diagnostics(document: BundleDocument) -> tuple[DiagnosticEvent, ...]:
+    diagnostics = list(_hierarchy_local_identifier_diagnostics(document))
+    definitions, grouped_definitions, definition_diagnostics = _build_hierarchy_definition_records(
+        document
+    )
+    diagnostics.extend(definition_diagnostics)
+    diagnostics.extend(
+        _hierarchy_reference_diagnostics(
+            document=document,
+            definitions=definitions,
+            grouped_definitions=grouped_definitions,
+        )
+    )
+    diagnostics.extend(_hierarchy_recursion_diagnostics(grouped_definitions))
+    return tuple(sort_diagnostics(diagnostics))
+
+
+def _hierarchy_local_identifier_diagnostics(document: BundleDocument) -> tuple[DiagnosticEvent, ...]:
+    diagnostics = list(_illegal_hierarchy_interface_declaration_diagnostics(document))
+    diagnostics.extend(
+        _duplicate_hierarchy_instance_id_diagnostics(
+            instances=document.instances,
+            scope_type="design",
+            scope_id="design",
+        )
+    )
+    for subcircuit in sorted(document.subcircuits, key=lambda item: item.subcircuit_id):
+        diagnostics.extend(_conflicting_subcircuit_local_declaration_diagnostics(subcircuit))
+        diagnostics.extend(_duplicate_subcircuit_element_id_diagnostics(subcircuit))
+        diagnostics.extend(
+            _duplicate_hierarchy_instance_id_diagnostics(
+                instances=subcircuit.instances,
+                scope_type="subcircuit",
+                scope_id=subcircuit.subcircuit_id,
+            )
+        )
+    return tuple(sort_diagnostics(diagnostics))
+
+
+def _illegal_hierarchy_interface_declaration_diagnostics(
+    document: BundleDocument,
+) -> tuple[DiagnosticEvent, ...]:
+    diagnostics: list[DiagnosticEvent] = []
+    for macro in sorted(document.macros, key=_hierarchy_macro_sort_key):
+        diagnostics.extend(
+            _duplicate_hierarchy_interface_name_diagnostics(
+                _IllegalHierarchyInterfaceDeclarationInput(
+                    values=macro.node_formals,
+                    declaration_kind="macro",
+                    field_name="node_formals",
+                    scope_id=macro.macro_id,
+                    scope_type="macro",
+                    context_element_id=macro.macro_id,
+                )
+            )
+        )
+    for subcircuit in sorted(document.subcircuits, key=_hierarchy_subcircuit_sort_key):
+        diagnostics.extend(
+            _duplicate_hierarchy_interface_name_diagnostics(
+                _IllegalHierarchyInterfaceDeclarationInput(
+                    values=subcircuit.ports,
+                    declaration_kind="subcircuit",
+                    field_name="ports",
+                    scope_id=subcircuit.subcircuit_id,
+                    scope_type="subcircuit",
+                    context_element_id=subcircuit.subcircuit_id,
+                )
+            )
+        )
+    return tuple(sort_diagnostics(diagnostics))
+
+
+def _duplicate_hierarchy_interface_name_diagnostics(
+    declaration_input: _IllegalHierarchyInterfaceDeclarationInput,
+) -> tuple[DiagnosticEvent, ...]:
+    diagnostics: list[DiagnosticEvent] = []
+    for normalized_id, raw_ids, duplicate_count in _duplicate_normalized_identifier_groups(
+        declaration_input.values
+    ):
+        diagnostics.append(
+            _loader_diag(
+                code="E_CLI_DESIGN_HIERARCHY_DECLARATION_ILLEGAL",
+                message=(
+                    "illegal "
+                    f"{declaration_input.declaration_kind} declaration '{declaration_input.scope_id}': "
+                    f"duplicate {declaration_input.field_name} entry after normalization "
+                    f"'{normalized_id}'"
+                ),
+                suggested_action=(
+                    "rename or disambiguate illegal hierarchy declaration names so each "
+                    "normalized declaration name is unique within its declared scope"
+                ),
+                witness={
+                    "declaration_kind": declaration_input.declaration_kind,
+                    "duplicate_count": duplicate_count,
+                    "field_name": declaration_input.field_name,
+                    "normalized_id": normalized_id,
+                    "raw_ids": list(raw_ids),
+                    "scope_id": declaration_input.scope_id,
+                    "scope_type": declaration_input.scope_type,
+                },
+                context=LoaderDiagContext(element_id=declaration_input.context_element_id),
+            )
+        )
+    return tuple(sort_diagnostics(diagnostics))
+
+
+def _conflicting_subcircuit_local_declaration_diagnostics(
+    subcircuit: BundleSubcircuitDecl,
+) -> tuple[DiagnosticEvent, ...]:
+    grouped: dict[str, list[tuple[str, str]]] = {}
+    for element in subcircuit.elements:
+        grouped.setdefault(_normalize_hierarchy_identifier(element.element_id), []).append(
+            ("element", element.element_id)
+        )
+    for instance in subcircuit.instances:
+        grouped.setdefault(_normalize_hierarchy_identifier(instance.instance_id), []).append(
+            ("instance", instance.instance_id)
+        )
+
+    diagnostics: list[DiagnosticEvent] = []
+    for normalized_id, declarations in sorted(grouped.items()):
+        declaration_kinds = {declaration_kind for declaration_kind, _ in declarations}
+        if len(declaration_kinds) == 1:
+            continue
+        ordered_declarations = tuple(sorted(declarations))
+        diagnostics.append(
+            _loader_diag(
+                code="E_CLI_DESIGN_HIERARCHY_DECLARATION_ILLEGAL",
+                message=(
+                    f"illegal subcircuit declaration '{subcircuit.subcircuit_id}': local "
+                    "declaration name conflicts across element/instance declarations after "
+                    f"normalization '{normalized_id}'"
+                ),
+                suggested_action=(
+                    "rename or disambiguate illegal hierarchy declaration names so each "
+                    "normalized declaration name is unique within its declared scope"
+                ),
+                witness={
+                    "declaration_kind": "subcircuit_local_namespace",
+                    "declarations": [
+                        {
+                            "declaration_kind": declaration_kind,
+                            "raw_id": raw_id,
+                        }
+                        for declaration_kind, raw_id in ordered_declarations
+                    ],
+                    "normalized_id": normalized_id,
+                    "scope_id": subcircuit.subcircuit_id,
+                    "scope_type": "subcircuit",
+                },
+                context=LoaderDiagContext(
+                    element_id=f"{subcircuit.subcircuit_id}:{ordered_declarations[0][1]}"
+                ),
+            )
+        )
+    return tuple(sort_diagnostics(diagnostics))
+
+
+def _duplicate_subcircuit_element_id_diagnostics(
+    subcircuit: BundleSubcircuitDecl,
+) -> tuple[DiagnosticEvent, ...]:
+    diagnostics: list[DiagnosticEvent] = []
+    for normalized_id, raw_ids, duplicate_count in _duplicate_normalized_identifier_groups(
+        element.element_id for element in subcircuit.elements
+    ):
+        context_element_id = f"{subcircuit.subcircuit_id}:{raw_ids[0]}"
+        diagnostics.append(
+            _loader_diag(
+                code="E_CLI_DESIGN_HIERARCHY_DUPLICATE_LOCAL_ELEMENT_ID",
+                message=(
+                    "duplicate subcircuit-local element id after normalization "
+                    f"'{normalized_id}' in subcircuit '{subcircuit.subcircuit_id}'"
+                ),
+                suggested_action=(
+                    "rename the duplicate subcircuit-local element ids so each scope-local id is unique"
+                ),
+                witness={
+                    "declaration_kind": "element",
+                    "duplicate_count": duplicate_count,
+                    "normalized_id": normalized_id,
+                    "raw_ids": list(raw_ids),
+                    "scope_id": subcircuit.subcircuit_id,
+                    "scope_type": "subcircuit",
+                },
+                context=LoaderDiagContext(element_id=context_element_id),
+            )
+        )
+    return tuple(sort_diagnostics(diagnostics))
+
+
+def _duplicate_hierarchy_instance_id_diagnostics(
+    *,
+    instances: Sequence[BundleHierarchyInstanceDecl],
+    scope_type: str,
+    scope_id: str,
+) -> tuple[DiagnosticEvent, ...]:
+    diagnostics: list[DiagnosticEvent] = []
+    for normalized_id, raw_ids, duplicate_count in _duplicate_normalized_identifier_groups(
+        instance.instance_id for instance in instances
+    ):
+        context_instance_id = raw_ids[0]
+        context_element_id = (
+            context_instance_id
+            if scope_type == "design"
+            else f"{scope_id}:{context_instance_id}"
+        )
+        diagnostics.append(
+            _loader_diag(
+                code="E_CLI_DESIGN_HIERARCHY_DUPLICATE_INSTANCE_ID",
+                message=(
+                    f"duplicate hierarchy instance id after normalization '{normalized_id}' in "
+                    f"{scope_type} scope '{scope_id}'"
+                ),
+                suggested_action=(
+                    "rename the duplicate hierarchy instance ids so each scope-local id is unique"
+                ),
+                witness={
+                    "duplicate_count": duplicate_count,
+                    "normalized_id": normalized_id,
+                    "raw_ids": list(raw_ids),
+                    "scope_id": scope_id,
+                    "scope_type": scope_type,
+                },
+                context=LoaderDiagContext(element_id=context_element_id),
+            )
+        )
+    return tuple(sort_diagnostics(diagnostics))
+
+
+def _duplicate_identifier_counts(values: Iterable[str]) -> tuple[tuple[str, int], ...]:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return tuple(
+        (identifier, counts[identifier])
+        for identifier in sorted(counts)
+        if counts[identifier] > 1
+    )
+
+
+def _duplicate_normalized_identifier_groups(
+    values: Iterable[str],
+) -> tuple[tuple[str, tuple[str, ...], int], ...]:
+    grouped: dict[str, list[str]] = {}
+    for value in values:
+        normalized_value = _normalize_hierarchy_identifier(value)
+        grouped.setdefault(normalized_value, []).append(value)
+    return tuple(
+        (
+            normalized_id,
+            tuple(sorted(raw_ids)),
+            len(raw_ids),
+        )
+        for normalized_id, raw_ids in sorted(grouped.items())
+        if len(raw_ids) > 1
+    )
+
+
+def _hierarchy_instance_element_id(scoped: _HierarchyScopedInstance) -> str:
+    if scoped.scope_type == "design":
+        return scoped.instance.instance_id
+    return f"{scoped.scope_id}:{scoped.instance.instance_id}"
+
+
+def _build_hierarchy_definition_records(
+    document: BundleDocument,
+) -> tuple[
+    Mapping[str, _HierarchyDefinitionRecord],
+    Mapping[str, tuple[_HierarchyDefinitionRecord, ...]],
+    tuple[DiagnosticEvent, ...],
+]:
+    grouped: dict[str, list[_HierarchyDefinitionRecord]] = {}
+    for macro in document.macros:
+        record = _HierarchyDefinitionRecord(
+            definition_type="macro",
+            raw_id=macro.macro_id,
+            normalized_id=_normalize_hierarchy_identifier(macro.macro_id),
+            expected_node_count=len(macro.node_formals),
+        )
+        grouped.setdefault(record.normalized_id, []).append(record)
+    for subcircuit in document.subcircuits:
+        record = _HierarchyDefinitionRecord(
+            definition_type="subcircuit",
+            raw_id=subcircuit.subcircuit_id,
+            normalized_id=_normalize_hierarchy_identifier(subcircuit.subcircuit_id),
+            expected_node_count=len(subcircuit.ports),
+            subcircuit_targets=tuple(
+                sorted(
+                    _normalize_hierarchy_identifier(instance.target_id)
+                    for instance in subcircuit.instances
+                    if instance.instance_type == "subcircuit"
+                )
+            ),
+        )
+        grouped.setdefault(record.normalized_id, []).append(record)
+
+    diagnostics: list[DiagnosticEvent] = []
+    resolved: dict[str, _HierarchyDefinitionRecord] = {}
+    normalized_records = {
+        normalized_id: tuple(
+            sorted(
+                grouped[normalized_id],
+                key=lambda record: (record.definition_type, record.raw_id),
+            )
+        )
+        for normalized_id in sorted(grouped)
+    }
+    for normalized_id, records in normalized_records.items():
+        if len(records) == 1:
+            resolved[normalized_id] = records[0]
+            continue
+        records_by_kind = _group_hierarchy_definition_records_by_type(records)
+        for definition_type, kind_records in records_by_kind.items():
+            if len(kind_records) > 1:
+                diagnostics.append(
+                    _loader_diag(
+                        code="E_CLI_DESIGN_HIERARCHY_DUPLICATE_DEFINITION",
+                        message=(
+                            "duplicate hierarchy "
+                            f"{definition_type} definition after normalization: {normalized_id}"
+                        ),
+                        suggested_action=(
+                            "rename the duplicate hierarchy definitions so each normalized id is unique"
+                        ),
+                        witness={
+                            "definition_type": definition_type,
+                            "normalized_id": normalized_id,
+                            "raw_ids": [record.raw_id for record in kind_records],
+                        },
+                        context=LoaderDiagContext(element_id=f"hierarchy:{normalized_id}"),
+                    )
+                )
+        if len(records_by_kind) > 1:
+            diagnostics.append(
+                _loader_diag(
+                    code="E_CLI_DESIGN_HIERARCHY_DEFINITION_CONFLICT",
+                    message=(
+                        f"hierarchy definition name conflicts across macro/subcircuit declarations: {normalized_id}"
+                    ),
+                    suggested_action=(
+                        "rename the conflicting macro/subcircuit definitions so each normalized id resolves unambiguously"
+                    ),
+                    witness={
+                        "definitions": [
+                            {
+                                "definition_type": record.definition_type,
+                                "raw_id": record.raw_id,
+                            }
+                            for record in records
+                        ],
+                        "normalized_id": normalized_id,
+                    },
+                    context=LoaderDiagContext(element_id=f"hierarchy:{normalized_id}"),
+                )
+            )
+    return resolved, normalized_records, tuple(sort_diagnostics(diagnostics))
+
+
+def _hierarchy_reference_diagnostics(
+    *,
+    document: BundleDocument,
+    definitions: Mapping[str, _HierarchyDefinitionRecord],
+    grouped_definitions: Mapping[str, tuple[_HierarchyDefinitionRecord, ...]],
+) -> tuple[DiagnosticEvent, ...]:
+    diagnostics: list[DiagnosticEvent] = []
+    for scoped in _scoped_hierarchy_instances(document):
+        instance = scoped.instance
+        normalized_target_id = _normalize_hierarchy_identifier(instance.target_id)
+        record = definitions.get(normalized_target_id)
+        if record is not None and record.definition_type == instance.instance_type:
+            actual_node_count = len(instance.nodes)
+            if actual_node_count != record.expected_node_count:
+                diagnostics.append(
+                    _loader_diag(
+                        code="E_CLI_DESIGN_HIERARCHY_INSTANCE_ARITY_INVALID",
+                        message=(
+                            f"hierarchy instance '{instance.instance_id}' supplies "
+                            f"{actual_node_count} node(s) but target '{instance.target_id}' "
+                            f"requires {record.expected_node_count}"
+                        ),
+                        suggested_action=(
+                            "match the instance nodes list to the referenced macro node_formals "
+                            "or subcircuit ports arity"
+                        ),
+                        witness={
+                            "actual_node_count": actual_node_count,
+                            "expected_node_count": record.expected_node_count,
+                            "instance_id": instance.instance_id,
+                            "instance_type": instance.instance_type,
+                            "normalized_target_id": normalized_target_id,
+                            "resolved_definition_type": record.definition_type,
+                            "resolved_raw_id": record.raw_id,
+                            "scope_id": scoped.scope_id,
+                            "scope_type": scoped.scope_type,
+                            "target_id": instance.target_id,
+                        },
+                        context=LoaderDiagContext(
+                            element_id=_hierarchy_instance_element_id(scoped)
+                        ),
+                    )
+                )
+            continue
+        witness: dict[str, object] = {
+            "instance_id": instance.instance_id,
+            "instance_type": instance.instance_type,
+            "normalized_target_id": normalized_target_id,
+            "scope_id": scoped.scope_id,
+            "scope_type": scoped.scope_type,
+            "target_id": instance.target_id,
+        }
+        if record is not None:
+            witness["resolved_definition_type"] = record.definition_type
+            witness["resolved_raw_id"] = record.raw_id
+            diagnostics.append(
+                _loader_diag(
+                    code="E_CLI_DESIGN_HIERARCHY_REFERENCE_TYPE_MISMATCH",
+                    message=(
+                        f"hierarchy instance '{instance.instance_id}' declares type "
+                        f"'{instance.instance_type}' but target '{instance.target_id}' resolves to "
+                        f"{record.definition_type} definition '{record.raw_id}'"
+                    ),
+                    suggested_action=(
+                        "align the instance_type with the referenced definition kind or retarget the instance"
+                    ),
+                    witness=witness,
+                    context=LoaderDiagContext(element_id=_hierarchy_instance_element_id(scoped)),
+                )
+            )
+            continue
+        grouped_records = grouped_definitions.get(normalized_target_id)
+        if grouped_records:
+            records_by_kind = _group_hierarchy_definition_records_by_type(grouped_records)
+            matching_records = records_by_kind.get(instance.instance_type, ())
+            if len(matching_records) > 1:
+                diagnostics.append(
+                    _loader_diag(
+                        code="E_CLI_DESIGN_HIERARCHY_DUPLICATE_DEFINITION",
+                        message=(
+                            f"hierarchy instance '{instance.instance_id}' references ambiguous "
+                            f"{instance.instance_type} definition '{instance.target_id}' because "
+                            f"normalized id '{normalized_target_id}' has duplicate declarations"
+                        ),
+                        suggested_action=(
+                            "rename the duplicate hierarchy definitions so each normalized id is unique"
+                        ),
+                        witness={
+                            **witness,
+                            "definition_type": instance.instance_type,
+                            "normalized_id": normalized_target_id,
+                            "raw_ids": [candidate.raw_id for candidate in matching_records],
+                        },
+                        context=LoaderDiagContext(element_id=_hierarchy_instance_element_id(scoped)),
+                    )
+                )
+            if len(records_by_kind) > 1 and matching_records:
+                diagnostics.append(
+                    _loader_diag(
+                        code="E_CLI_DESIGN_HIERARCHY_DEFINITION_CONFLICT",
+                        message=(
+                            f"hierarchy instance '{instance.instance_id}' references ambiguous "
+                            f"definition '{instance.target_id}' because normalized id "
+                            f"'{normalized_target_id}' conflicts across macro/subcircuit declarations"
+                        ),
+                        suggested_action=(
+                            "rename the conflicting macro/subcircuit definitions so each normalized id resolves unambiguously"
+                        ),
+                        witness={
+                            **witness,
+                            "definitions": [
+                                {
+                                    "definition_type": candidate.definition_type,
+                                    "raw_id": candidate.raw_id,
+                                }
+                                for candidate in grouped_records
+                            ],
+                            "normalized_id": normalized_target_id,
+                        },
+                        context=LoaderDiagContext(element_id=_hierarchy_instance_element_id(scoped)),
+                    )
+                )
+                continue
+            if matching_records:
+                continue
+            duplicate_definition_types = tuple(
+                definition_type
+                for definition_type, kind_records in records_by_kind.items()
+                if len(kind_records) > 1
+            )
+            if duplicate_definition_types:
+                duplicate_definition_type = duplicate_definition_types[0]
+                duplicate_records = records_by_kind[duplicate_definition_type]
+                diagnostics.append(
+                    _loader_diag(
+                        code="E_CLI_DESIGN_HIERARCHY_DUPLICATE_DEFINITION",
+                        message=(
+                            f"hierarchy instance '{instance.instance_id}' cannot resolve requested "
+                            f"{instance.instance_type} definition '{instance.target_id}' because "
+                            f"normalized id '{normalized_target_id}' has duplicate "
+                            f"{duplicate_definition_type} declarations"
+                        ),
+                        suggested_action=(
+                            "rename the duplicate hierarchy definitions so each normalized id is unique"
+                        ),
+                        witness={
+                            **witness,
+                            "definition_type": duplicate_definition_type,
+                            "normalized_id": normalized_target_id,
+                            "raw_ids": [candidate.raw_id for candidate in duplicate_records],
+                            "requested_instance_type": instance.instance_type,
+                        },
+                        context=LoaderDiagContext(element_id=_hierarchy_instance_element_id(scoped)),
+                    )
+                )
+                continue
+        diagnostics.append(
+            _loader_diag(
+                code="E_CLI_DESIGN_HIERARCHY_REFERENCE_UNDEFINED",
+                message=(
+                    f"hierarchy instance '{instance.instance_id}' references undefined {instance.instance_type} "
+                    f"definition '{instance.target_id}'"
+                ),
+                suggested_action=(
+                    "declare the referenced hierarchy definition or fix the instance target id/type"
+                ),
+                witness=witness,
+                context=LoaderDiagContext(element_id=_hierarchy_instance_element_id(scoped)),
+            )
+        )
+    return tuple(sort_diagnostics(diagnostics))
+
+
+def _group_hierarchy_definition_records_by_type(
+    records: Sequence[_HierarchyDefinitionRecord],
+) -> dict[BundleHierarchyInstanceType, tuple[_HierarchyDefinitionRecord, ...]]:
+    grouped: dict[BundleHierarchyInstanceType, list[_HierarchyDefinitionRecord]] = {}
+    for record in records:
+        grouped.setdefault(record.definition_type, []).append(record)
+    return {
+        definition_type: tuple(
+            sorted(grouped[definition_type], key=lambda record: record.raw_id)
+        )
+        for definition_type in sorted(grouped)
+    }
+
+
+def _hierarchy_recursion_diagnostics(
+    grouped_definitions: Mapping[str, tuple[_HierarchyDefinitionRecord, ...]],
+) -> tuple[DiagnosticEvent, ...]:
+    graph: dict[str, tuple[str, ...]] = {}
+    for normalized_id, records in grouped_definitions.items():
+        subcircuit_targets = {
+            target
+            for record in records
+            if record.definition_type == "subcircuit"
+            for target in record.subcircuit_targets
+        }
+        if any(record.definition_type == "subcircuit" for record in records):
+            graph[normalized_id] = tuple(sorted(subcircuit_targets))
+    recursive_components = _recursive_subcircuit_components(graph)
+
+    diagnostics = [
+        _loader_diag(
+            code="E_CLI_DESIGN_HIERARCHY_RECURSION_ILLEGAL",
+            message=(
+                "illegal recursive subcircuit declaration detected in strongly connected component: "
+                + ", ".join(component)
+            ),
+            suggested_action=(
+                "remove the recursive subcircuit reference cycle before elaboration"
+            ),
+            witness={"component": list(component)},
+            context=LoaderDiagContext(element_id=f"hierarchy:{component[0]}"),
+        )
+        for component in recursive_components
+    ]
+    return tuple(sort_diagnostics(diagnostics))
+
+
+def _hierarchy_top_level_instances_unsupported_diagnostic(
+    document: BundleDocument,
+) -> DiagnosticEvent:
+    return _loader_diag(
+        code="E_CLI_DESIGN_HIERARCHY_UNSUPPORTED",
+        message=(
+            "top-level hierarchy instantiation parsed successfully but deterministic hierarchy elaboration is not implemented yet"
+        ),
+        suggested_action="remove design.instances for now or wait for P3-03 hierarchy elaboration support",
+        witness={
+            "instance_count": len(document.instances),
+            "instance_ids": [
+                _normalize_hierarchy_identifier(instance.instance_id)
+                for instance in sorted(
+                    document.instances,
+                    key=lambda item: _normalize_hierarchy_identifier(item.instance_id),
+                )
+            ],
+        },
+        context=LoaderDiagContext(element_id=_DESIGN_LOADER_CONTEXT),
+    )
+
+
+def _scoped_hierarchy_instances(document: BundleDocument) -> tuple[_HierarchyScopedInstance, ...]:
+    scoped: list[_HierarchyScopedInstance] = [
+        _HierarchyScopedInstance(scope_type="design", scope_id="design", instance=instance)
+        for instance in document.instances
+    ]
+    for subcircuit in sorted(document.subcircuits, key=lambda item: item.subcircuit_id):
+        for instance in sorted(subcircuit.instances, key=lambda item: item.instance_id):
+            scoped.append(
+                _HierarchyScopedInstance(
+                    scope_type="subcircuit",
+                    scope_id=subcircuit.subcircuit_id,
+                    instance=instance,
+                )
+            )
+    return tuple(scoped)
+
+
+def _recursive_subcircuit_components(
+    graph: Mapping[str, Sequence[str]],
+) -> tuple[tuple[str, ...], ...]:
+    ordered_nodes = tuple(sorted(graph))
+    ordered_node_set = set(ordered_nodes)
+    adjacency = {
+        node: tuple(target for target in graph.get(node, ()) if target in ordered_node_set)
+        for node in ordered_nodes
+    }
+    reverse_adjacency_lists: dict[str, list[str]] = {node: [] for node in ordered_nodes}
+    for node in ordered_nodes:
+        for target in adjacency[node]:
+            reverse_adjacency_lists[target].append(node)
+    reverse_graph = {
+        node: tuple(sorted(reverse_adjacency_lists[node]))
+        for node in ordered_nodes
+    }
+    finish_order = _iterative_finish_order(ordered_nodes, adjacency)
+
+    assigned: set[str] = set()
+    components: list[tuple[str, ...]] = []
+
+    for node in reversed(finish_order):
+        if node in assigned:
+            continue
+        component_nodes = _iterative_reverse_component(node, reverse_graph, assigned)
+        component = tuple(sorted(component_nodes))
+        if len(component) > 1:
+            components.append(component)
+            continue
+        only_node = component[0]
+        if only_node in adjacency[only_node]:
+            components.append(component)
+
+    return tuple(sorted(components))
+
+
+def _iterative_finish_order(
+    ordered_nodes: Sequence[str],
+    adjacency: Mapping[str, Sequence[str]],
+) -> tuple[str, ...]:
+    visited: set[str] = set()
+    finish_order: list[str] = []
+    for node in ordered_nodes:
+        if node in visited:
+            continue
+        visited.add(node)
+        stack: list[tuple[str, Iterator[str]]] = [(node, iter(adjacency[node]))]
+        while stack:
+            current, targets = stack[-1]
+            try:
+                target = next(targets)
+            except StopIteration:
+                finish_order.append(current)
+                stack.pop()
+                continue
+            if target in visited:
+                continue
+            visited.add(target)
+            stack.append((target, iter(adjacency[target])))
+    return tuple(finish_order)
+
+
+def _iterative_reverse_component(
+    node: str,
+    reverse_graph: Mapping[str, Sequence[str]],
+    assigned: set[str],
+) -> tuple[str, ...]:
+    assigned.add(node)
+    component_nodes = [node]
+    stack: list[tuple[str, Iterator[str]]] = [(node, iter(reverse_graph[node]))]
+    while stack:
+        current, sources = stack[-1]
+        try:
+            source = next(sources)
+        except StopIteration:
+            stack.pop()
+            continue
+        if source in assigned:
+            continue
+        assigned.add(source)
+        component_nodes.append(source)
+        stack.append((source, iter(reverse_graph[source])))
+    return tuple(component_nodes)
+
+
+def _normalize_hierarchy_identifier(raw_identifier: str) -> str:
+    normalized_source = unicodedata.normalize("NFC", raw_identifier)
+    normalized = "".join(
+        character if character.isalnum() or character == "_" else "_"
+        for character in normalized_source.strip().upper().replace("-", "_").replace(" ", "_")
+    )
+    collapsed = normalized
+    while "__" in collapsed:
+        collapsed = collapsed.replace("__", "_")
+    stripped = collapsed.strip("_")
+    return stripped if stripped else "_"
+
+
+def _canonical_bundle_parse_product_payload(document: BundleDocument) -> dict[str, object]:
+    return {
+        "analysis": {
+            "frequency_sweep": {
+                "mode": document.frequency_sweep.mode,
+                "points": document.frequency_sweep.points,
+                "start": _canonical_frequency_value_payload(document.frequency_sweep.start),
+                "stop": _canonical_frequency_value_payload(document.frequency_sweep.stop),
+            },
+            "parameter_sweeps": [
+                {
+                    "parameter": sweep.parameter,
+                    "values": list(sweep.values),
+                }
+                for sweep in document.parameter_sweeps
+            ],
+        },
+        "design": {
+            "declared_nodes": list(document.declared_nodes),
+            "elements": [
+                _canonical_element_payload(element) for element in document.elements
+            ],
+            "instances": _sorted_canonical_payloads(
+                _canonical_hierarchy_instance_payload(instance) for instance in document.instances
+            ),
+            "macros": _sorted_canonical_payloads(
+                _canonical_macro_payload(macro) for macro in document.macros
+            ),
+            "parameters": _sorted_scalar_mapping_items(document.parameters),
+            "ports": [
+                _canonical_port_payload(port) for port in document.ports
+            ],
+            "reference_node": document.reference_node,
+            "subcircuits": _sorted_canonical_payloads(
+                _canonical_subcircuit_payload(subcircuit) for subcircuit in document.subcircuits
+            ),
+        },
+        "schema": DESIGN_BUNDLE_SCHEMA_ID,
+        "schema_version": DESIGN_BUNDLE_SCHEMA_VERSION,
+    }
+
+
+def _canonical_frequency_value_payload(value: BundleFrequencyValue) -> dict[str, object]:
+    return {"unit": value.unit, "value": value.value}
+
+
+def _canonical_element_payload(element: BundleElementDecl) -> dict[str, object]:
+    return {
+        "element_id": element.element_id,
+        "kind": _canonical_parse_product_kind(element.kind),
+        "nodes": list(element.nodes),
+        "params": _sorted_scalar_mapping_items(element.params),
+    }
+
+
+def _canonical_port_payload(port: BundlePortDecl) -> dict[str, object]:
+    return {
+        "p_minus": port.p_minus,
+        "p_plus": port.p_plus,
+        "port_id": port.port_id,
+        "z0_ohm": port.z0_ohm,
+    }
+
+
+def _canonical_macro_payload(macro: BundleMacroDecl) -> dict[str, object]:
+    return {
+        "id": _normalize_hierarchy_identifier(macro.macro_id),
+        "kind": _canonical_parse_product_kind(macro.kind),
+        "node_formals": list(macro.node_formals),
+        "params": _sorted_scalar_mapping_items(macro.params),
+    }
+
+
+def _canonical_subcircuit_payload(subcircuit: BundleSubcircuitDecl) -> dict[str, object]:
+    return {
+        "elements": [
+            _canonical_element_payload(element) for element in subcircuit.elements
+        ],
+        "id": _normalize_hierarchy_identifier(subcircuit.subcircuit_id),
+        "instances": _sorted_canonical_payloads(
+            _canonical_hierarchy_instance_payload(instance) for instance in subcircuit.instances
+        ),
+        "parameters": _sorted_scalar_mapping_items(subcircuit.parameters),
+        "ports": list(subcircuit.ports),
+    }
+
+
+def _canonical_hierarchy_instance_payload(
+    instance: BundleHierarchyInstanceDecl,
+) -> dict[str, object]:
+    return {
+        "id": _normalize_hierarchy_identifier(instance.instance_id),
+        "instance_type": instance.instance_type,
+        "nodes": list(instance.nodes),
+        "params": _sorted_scalar_mapping_items(instance.params),
+        "target_id": _normalize_hierarchy_identifier(instance.target_id),
+    }
+
+
+def _sorted_scalar_mapping_items(
+    mapping: Mapping[str, float | str],
+) -> list[list[object]]:
+    return [[key, mapping[key]] for key in sorted(mapping)]
+
+
+def _canonical_parse_product_kind(raw_kind: str) -> str:
+    canonical_kind = canonicalize_element_kind(raw_kind)
+    if canonical_kind is not None:
+        return canonical_kind
+    return raw_kind
+
+
+def _sorted_canonical_payloads(
+    payloads: Iterable[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    canonical_payloads = [dict(payload) for payload in payloads]
+    return sorted(canonical_payloads, key=_canonical_payload_sort_key)
+
+
+def _canonical_payload_sort_key(payload: Mapping[str, object]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
 def _excluded_capability_id(normalized_kind: str) -> str | None:
@@ -1690,6 +3416,7 @@ def _evaluate_scalar_token(
     *,
     resolved_parameters: Mapping[str, float],
     path: str,
+    context: LoaderDiagContext | None = None,
 ) -> float:
     if isinstance(token, float):
         if not isfinite(token):
@@ -1700,6 +3427,7 @@ def _evaluate_scalar_token(
                         message="design numeric values must be finite",
                         suggested_action="replace non-finite numeric values with finite numbers",
                         witness={"path": path},
+                        context=context,
                     ),
                 )
             )
@@ -1719,6 +3447,7 @@ def _evaluate_scalar_token(
                         "source_code": exc.detail.code,
                         "witness": list(exc.detail.witness or ()),
                     },
+                    context=context,
                 ),
             )
         ) from exc
@@ -1744,11 +3473,12 @@ def _parse_elements(value: object, *, path: str) -> tuple[BundleElementDecl, ...
         )
         nodes = _parse_string_list(element_mapping["nodes"], path=f"{element_path}.nodes")
         params = _parse_scalar_mapping(element_mapping["params"], path=f"{element_path}.params")
-        _validate_supported_element_schema_shape(
+        _validate_supported_element_shape(
             kind=kind,
             nodes=nodes,
             params=params,
-            element_path=element_path,
+            nodes_path=f"{element_path}.nodes",
+            params_path=f"{element_path}.params",
         )
         elements.append(
             BundleElementDecl(
@@ -1761,25 +3491,50 @@ def _parse_elements(value: object, *, path: str) -> tuple[BundleElementDecl, ...
     return tuple(elements)
 
 
-def _validate_supported_element_schema_shape(
+def _validate_supported_element_shape(
     *,
     kind: str,
     nodes: tuple[str, ...],
     params: Mapping[str, float | str],
-    element_path: str,
+    nodes_path: str,
+    params_path: str,
 ) -> None:
+    canonical_kind = _validate_supported_element_node_shape(kind=kind, nodes=nodes, nodes_path=nodes_path)
+    if canonical_kind is None:
+        return
+    _validate_required_supported_element_params(
+        canonical_kind=canonical_kind,
+        params=params,
+        params_path=params_path,
+    )
+
+
+def _validate_supported_element_node_shape(
+    *,
+    kind: str,
+    nodes: tuple[str, ...],
+    nodes_path: str,
+) -> str | None:
     schema_contract = _load_design_bundle_schema_contract()
     canonical_kind = canonicalize_element_kind(kind)
     if canonical_kind is None or canonical_kind not in schema_contract.supported_kind_node_counts:
-        return
-
+        return None
     expected_node_count = schema_contract.supported_kind_node_counts[canonical_kind]
     if len(nodes) != expected_node_count:
         _schema_error(
             f"expected exactly {expected_node_count} node ids for kind {kind}",
-            path=f"{element_path}.nodes",
+            path=nodes_path,
         )
+    return canonical_kind
 
+
+def _validate_required_supported_element_params(
+    *,
+    canonical_kind: str,
+    params: Mapping[str, float | str],
+    params_path: str,
+) -> None:
+    schema_contract = _load_design_bundle_schema_contract()
     missing_params = tuple(
         param_name
         for param_name in schema_contract.supported_kind_required_params[canonical_kind]
@@ -1788,7 +3543,7 @@ def _validate_supported_element_schema_shape(
     if missing_params:
         _schema_error(
             f"missing required keys: {', '.join(missing_params)}",
-            path=f"{element_path}.params",
+            path=params_path,
         )
 
 
@@ -1813,6 +3568,117 @@ def _parse_ports(value: object, *, path: str) -> tuple[BundlePortDecl, ...]:
             )
         )
     return tuple(ports)
+
+
+def _parse_macros(value: object, *, path: str) -> tuple[BundleMacroDecl, ...]:
+    schema_contract = _load_design_bundle_schema_contract()
+    raw_macros = _require_list(value, path=path)
+    macros: list[BundleMacroDecl] = []
+    for index, raw_macro in enumerate(raw_macros):
+        macro_path = f"{path}[{index}]"
+        macro_mapping = _require_mapping(raw_macro, path=macro_path)
+        _validate_allowed_keys(
+            macro_mapping,
+            path=macro_path,
+            allowed_keys=("id", "kind", "node_formals", "params"),
+            required_keys=("id", "kind", "node_formals"),
+        )
+        kind = _require_literal_string(
+            macro_mapping["kind"],
+            path=f"{macro_path}.kind",
+            allowed=schema_contract.accepted_element_kind_tokens,
+        )
+        node_formals = _parse_string_list(
+            macro_mapping["node_formals"], path=f"{macro_path}.node_formals"
+        )
+        params = _parse_scalar_mapping(macro_mapping.get("params", {}), path=f"{macro_path}.params")
+        _validate_supported_element_node_shape(
+            kind=kind,
+            nodes=node_formals,
+            nodes_path=f"{macro_path}.node_formals",
+        )
+        macros.append(
+            BundleMacroDecl(
+                macro_id=_require_nonempty_string(macro_mapping["id"], path=f"{macro_path}.id"),
+                kind=kind,
+                node_formals=node_formals,
+                params=params,
+            )
+        )
+    return tuple(macros)
+
+
+def _parse_subcircuits(value: object, *, path: str) -> tuple[BundleSubcircuitDecl, ...]:
+    raw_subcircuits = _require_list(value, path=path)
+    subcircuits: list[BundleSubcircuitDecl] = []
+    for index, raw_subcircuit in enumerate(raw_subcircuits):
+        subcircuit_path = f"{path}[{index}]"
+        subcircuit_mapping = _require_mapping(raw_subcircuit, path=subcircuit_path)
+        _validate_allowed_keys(
+            subcircuit_mapping,
+            path=subcircuit_path,
+            allowed_keys=("id", "ports", "parameters", "elements", "instances"),
+            required_keys=("id", "ports", "elements"),
+        )
+        subcircuits.append(
+            BundleSubcircuitDecl(
+                subcircuit_id=_require_nonempty_string(
+                    subcircuit_mapping["id"], path=f"{subcircuit_path}.id"
+                ),
+                ports=_parse_string_list(subcircuit_mapping["ports"], path=f"{subcircuit_path}.ports"),
+                parameters=_parse_scalar_mapping(
+                    subcircuit_mapping.get("parameters", {}),
+                    path=f"{subcircuit_path}.parameters",
+                ),
+                elements=_parse_elements(
+                    subcircuit_mapping["elements"], path=f"{subcircuit_path}.elements"
+                ),
+                instances=_parse_hierarchy_instances(
+                    subcircuit_mapping.get("instances", []),
+                    path=f"{subcircuit_path}.instances",
+                ),
+            )
+        )
+    return tuple(subcircuits)
+
+
+def _parse_hierarchy_instances(
+    value: object,
+    *,
+    path: str,
+) -> tuple[BundleHierarchyInstanceDecl, ...]:
+    schema_contract = _load_design_bundle_schema_contract()
+    raw_instances = _require_list(value, path=path)
+    instances: list[BundleHierarchyInstanceDecl] = []
+    for index, raw_instance in enumerate(raw_instances):
+        instance_path = f"{path}[{index}]"
+        instance_mapping = _require_mapping(raw_instance, path=instance_path)
+        _validate_allowed_keys(
+            instance_mapping,
+            path=instance_path,
+            allowed_keys=("id", "instance_type", "of", "nodes", "params"),
+            required_keys=("id", "instance_type", "of", "nodes"),
+        )
+        instances.append(
+            BundleHierarchyInstanceDecl(
+                instance_id=_require_nonempty_string(instance_mapping["id"], path=f"{instance_path}.id"),
+                instance_type=cast(
+                    BundleHierarchyInstanceType,
+                    _require_literal_string(
+                        instance_mapping["instance_type"],
+                        path=f"{instance_path}.instance_type",
+                        allowed=schema_contract.hierarchy_instance_types,
+                    ),
+                ),
+                target_id=_require_nonempty_string(instance_mapping["of"], path=f"{instance_path}.of"),
+                nodes=_parse_string_list(instance_mapping["nodes"], path=f"{instance_path}.nodes"),
+                params=_parse_scalar_mapping(
+                    instance_mapping.get("params", {}),
+                    path=f"{instance_path}.params",
+                ),
+            )
+        )
+    return tuple(instances)
 
 
 def _parse_frequency_sweep(value: object, *, path: str) -> BundleFrequencySweep:
@@ -1890,7 +3756,7 @@ def _parse_scalar_mapping(value: object, *, path: str) -> Mapping[str, float | s
         if not key.strip():
             _schema_error("mapping keys must be non-empty strings", path=path)
         parsed[key] = _parse_scalar_token(raw_mapping[key], path=f"{path}.{key}")
-    return parsed
+    return MappingProxyType(parsed)
 
 
 def _parse_string_list(value: object, *, path: str) -> tuple[str, ...]:

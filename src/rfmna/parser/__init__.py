@@ -27,16 +27,21 @@ from .preflight import (
 from .units import parse_frequency_unit
 
 __all__ = [
+    "DESIGN_BUNDLE_SCHEMA_ID",
+    "DESIGN_BUNDLE_SCHEMA_VERSION",
+    "DesignBundleLoadError",
     "HardConstraint",
     "IdealVSource",
     "ParseError",
     "ParseErrorCode",
     "ParseErrorDetail",
+    "ParsedDesignBundle",
     "PortDecl",
     "PreflightInput",
     "ResolvedParameters",
     "evaluate_expression",
     "extract_dependencies",
+    "load_design_bundle_document",
     "parse_frequency_unit",
     "parse_scalar_number",
     "preflight_check",

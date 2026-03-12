@@ -6,10 +6,12 @@
       "label": "Canonical design bundle schema, loader contract, and interim exclusion artifacts",
       "detection": [
         {"path_glob": "docs/dev/design_bundle_contract.md"},
+        {"path_glob": "docs/dev/p3_02_design_bundle_schema_evolution.md"},
         {"path_glob": "docs/dev/p3_loader_temporary_exclusions.yaml"},
         {"path_glob": "docs/dev/p3_loader_temporary_exclusions_schema_v1.json"},
         {"path_glob": "src/rfmna/parser/resources/p3_loader_temporary_exclusions.yaml"},
         {"path_glob": "tests/conformance/test_design_bundle_loader_conformance.py"},
+        {"path_glob": "tests/conformance/test_design_bundle_hierarchy_conformance.py"},
         {"path_glob": "tests/regression/test_design_bundle_loader_regression.py"},
         {"path_glob": "tests/unit/test_design_bundle_loader.py"}
       ],
@@ -21,14 +23,17 @@
       ],
       "required_artifact_paths": {
         "policy_docs": [
-          "docs/dev/design_bundle_contract.md"
+          "docs/dev/design_bundle_contract.md",
+          "docs/dev/p3_02_design_bundle_schema_evolution.md"
         ],
         "schema_artifacts": [
           "docs/dev/p3_loader_temporary_exclusions_schema_v1.json",
-          "docs/spec/schemas/design_bundle_v1.json"
+          "docs/spec/schemas/design_bundle_v1.json",
+          "src/rfmna/parser/resources/design_bundle_v1.json"
         ],
         "conformance_updates": [
-          "tests/conformance/test_design_bundle_loader_conformance.py"
+          "tests/conformance/test_design_bundle_loader_conformance.py",
+          "tests/conformance/test_design_bundle_hierarchy_conformance.py"
         ],
         "process_traceability": [
           "docs/dev/phase3_process_traceability.md"
@@ -142,6 +147,7 @@
       "required_fragments": [
         "declared_surface_ids",
         "Required evidence keys are determined by the touched surface rule",
+        "src/rfmna/parser/resources/",
         "docs/dev/change_scope.yaml"
       ]
     },
